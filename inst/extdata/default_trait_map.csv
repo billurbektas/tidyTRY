@@ -1,0 +1,24 @@
+original,short_name
+Leaf nitrogen (N) content per leaf dry mass,N_percent
+Leaf phosphorus (P) content per leaf dry mass,LPC
+Leaf carbon (C) content per leaf dry mass,C_percent
+"Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): petiole excluded",SLA
+"Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): petiole included",SLA
+"Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): undefined if petiole is in- or excluded",SLA
+Plant height vegetative,vegetative_height
+Seed dry mass,seed_mass
+"Leaf dry mass per leaf fresh mass (leaf dry matter content, LDMC)",LDMC
+Root nitrogen (N) content per root dry mass,RNC
+"Root length per root dry mass (specific root length, SRL)",SRL
+Fine root nitrogen (N) content per fine root dry mass,fRNC
+Fine root diameter,RD
+"Fine root tissue density (fine root dry mass per fine root volume)",fRTD
+"Root tissue density (root dry mass per root volume)",RTD
+"Leaf density (leaf tissue density, leaf dry mass per leaf volume)",leaf_density
+"Leaf area (in case of compound leaves: leaflet, petiole excluded)",LA
+"Leaf area (in case of compound leaves: leaf, petiole excluded)",LA
+"Leaf area (in case of compound leaves: leaflet, petiole included)",LA
+"Leaf area (in case of compound leaves: leaflet, undefined if petiole is in- or excluded)",LA
+"Leaf area (in case of compound leaves: leaf, petiole included)",LA
+"Leaf area (in case of compound leaves: leaf, undefined if petiole in- or excluded)",LA
+"Leaf area (in case of compound leaves undefined if leaf or leaflet, undefined if petiole is in- or excluded)",LA

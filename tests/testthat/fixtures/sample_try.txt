@@ -1,0 +1,15 @@
+LastName	FirstName	DatasetID	Dataset	SpeciesName	AccSpeciesID	AccSpeciesName	ObservationID	ObsDataID	TraitID	TraitName	DataID	DataName	OriglName	OrigValueStr	OrigUnitStr	ValueKindName	OrigUncertaintyStr	UncertaintyName	Replicates	StdValue	UnitName	RelUncertaintyPercent	OrigObsDataID	ErrorRisk	Reference	Comment	StdValueStr
+Smith	John	100	TestDataset1	Papaver rhoeas	5001	Papaver rhoeas	1001	10001	3115	Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): petiole excluded	59	SLA	SLA	25.3	mm2/mg	Single	NA	NA	1	25.3	mm2 mg-1	NA	10001	2	Test ref 1	NA	NA
+Smith	John	100	TestDataset1	Papaver rhoeas	5001	Papaver rhoeas	1001	10002	14	Leaf nitrogen (N) content per leaf dry mass	60	LNC	LNC	2.1	%	Single	NA	NA	1	21.0	mg/g	NA	10002	1	Test ref 1	NA	NA
+Smith	John	100	TestDataset1	Papaver rhoeas	5001	Papaver rhoeas	1001	10003	NA	NA	61	Latitude	Latitude	48.5	NA	NA	NA	NA	NA	48.5	NA	NA	10003	NA	Test ref 1	NA	NA
+Smith	John	100	TestDataset1	Papaver rhoeas	5001	Papaver rhoeas	1001	10004	NA	NA	62	Longitude	Longitude	8.2	NA	NA	NA	NA	NA	8.2	NA	NA	10004	NA	Test ref 1	NA	NA
+Smith	John	100	TestDataset1	Centaurea cyanus	5002	Centaurea cyanus	1002	10005	3115	Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): petiole excluded	59	SLA	SLA	18.7	mm2/mg	Single	NA	NA	1	18.7	mm2 mg-1	NA	10005	1	Test ref 1	NA	NA
+Smith	John	100	TestDataset1	Centaurea cyanus	5002	Centaurea cyanus	1002	10006	14	Leaf nitrogen (N) content per leaf dry mass	60	LNC	LNC	1.8	%	Single	NA	NA	1	18.0	mg/g	NA	10006	3	Test ref 1	NA	NA
+Smith	John	100	TestDataset1	Centaurea cyanus	5002	Centaurea cyanus	1002	10007	NA	NA	61	Latitude	Latitude	47.2	NA	NA	NA	NA	NA	47.2	NA	NA	10007	NA	Test ref 1	NA	NA
+Smith	John	100	TestDataset1	Centaurea cyanus	5002	Centaurea cyanus	1002	10008	NA	NA	62	Longitude	Longitude	7.5	NA	NA	NA	NA	NA	7.5	NA	NA	10008	NA	Test ref 1	NA	NA
+Doe	Jane	200	TestDataset2	Papaver rhoeas	5001	Papaver rhoeas	1003	10009	3115	Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): petiole excluded	59	SLA	SLA	22.1	mm2/mg	Single	NA	NA	1	22.1	mm2 mg-1	NA	10009	5	Test ref 2	NA	NA
+Doe	Jane	200	TestDataset2	Papaver rhoeas	5001	Papaver rhoeas	1003	10010	14	Leaf nitrogen (N) content per leaf dry mass	60	LNC	LNC	2.5	%	Single	NA	NA	1	25.0	mg/g	NA	10010	2	Test ref 2	NA	NA
+Doe	Jane	200	TestDataset2	Trifolium arvense	5003	Trifolium arvense	1004	10011	3115	Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): petiole excluded	59	SLA	SLA	30.5	mm2/mg	Single	NA	NA	1	30.5	mm2 mg-1	NA	10011	1	Test ref 2	NA	NA
+Doe	Jane	200	TestDataset2	Trifolium arvense	5003	Trifolium arvense	1004	10012	341	Plant life form (Raunkiaer life form)	70	LifeForm	LifeForm	Therophyte	NA	Single	NA	NA	1	NA	NA	NA	10012	NA	Test ref 2	NA	NA
+Doe	Jane	300	TestDataset3_Exp	Rosa canina	5004	Rosa canina	1005	10013	3115	Leaf area per leaf dry mass (specific leaf area, SLA or 1/LMA): petiole excluded	59	SLA	SLA	15.0	mm2/mg	Single	NA	NA	1	15.0	mm2 mg-1	NA	10013	1	Test ref 3	NA	NA
+Doe	Jane	300	TestDataset3_Exp	Rosa canina	5004	Rosa canina	1005	10014	NA	NA	80	Treatment	Treatment	Drought	NA	NA	NA	NA	NA	NA	NA	NA	10014	NA	Test ref 3	NA	NA
