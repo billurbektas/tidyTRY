@@ -119,13 +119,13 @@ resolve_species <- function(species,
 
   tibble::tibble(
     submitted_name = res$spec.name,
-    accepted_name = ifelse(
-      !is.na(res$Accepted) & res$Accepted != "",
-      res$Accepted,
+    accepted_name = res$scientificName,
+    matched_name = ifelse(
+      res$New.accepted & res$Old.name != "",
+      res$Old.name,
       res$scientificName
     ),
-    matched_name = res$scientificName,
     source = "WFO",
-    score = res$Fuzzy
+    score = ifelse(res$Fuzzy, res$Fuzzy.dist, 0)
   )
 }
