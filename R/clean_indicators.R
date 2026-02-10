@@ -1,10 +1,90 @@
+# floraveg.eu base URL for direct downloads
+.floraveg_base_url <- "https://files.ibot.cas.cz/cevs/downloads/floraveg/"
+
+# Known download URLs
+.floraveg_urls <- list(
+  ellenberg_disturbance = paste0(.floraveg_base_url, "Ellenberg_disturbance.xlsx"),
+  dispersal_v1 = paste0(.floraveg_base_url, "Lososova_et_al_2023_Dispersal.xlsx"),
+  dispersal_v2 = paste0(.floraveg_base_url, "Lososova_et_al_2023_Dispersal_version2_2024-06-14.xlsx"),
+  ellenberg_only = paste0(.floraveg_base_url, "Indicator_values_Tichy_et_al%202022-11-29.xlsx"),
+  disturbance_only = paste0(.floraveg_base_url, "disturbance_indicator_values.xlsx"),
+  life_form = paste0(.floraveg_base_url, "Life_form.xlsx")
+)
+
+
+#' Download data from floraveg.eu
+#'
+#' Downloads ecological indicator and trait datasets from
+#' [floraveg.eu](https://floraveg.eu/download/). No registration required.
+#'
+#' @param dataset Name of the dataset to download. One of:
+#'   - `"ellenberg_disturbance"` (default): combined Ellenberg indicator
+#'     values and disturbance classes
+#'   - `"dispersal"`: seed dispersal data (Lososova et al. 2023, version 2)
+#'   - `"dispersal_v1"`: seed dispersal data (version 1)
+#'   - `"ellenberg"`: Ellenberg indicator values only
+#'   - `"disturbance"`: disturbance indicator values only
+#'   - `"life_form"`: life form classifications
+#' @param dest_dir Directory to save the downloaded file. Defaults to a
+#'   temporary directory. Set to a permanent path to cache the file.
+#' @param overwrite Logical. Re-download if the file already exists?
+#'   Defaults to `FALSE`.
+#'
+#' @return The file path of the downloaded file (invisibly).
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Download to a temp directory
+#' f <- download_floraveg("ellenberg_disturbance")
+#' indicators <- read_indicators(f, species = my_species)
+#'
+#' # Download and cache permanently
+#' f <- download_floraveg("dispersal", dest_dir = "data/")
+#' }
+download_floraveg <- function(dataset = c("ellenberg_disturbance", "dispersal",
+                                          "dispersal_v1", "ellenberg",
+                                          "disturbance", "life_form"),
+                              dest_dir = tempdir(),
+                              overwrite = FALSE) {
+  dataset <- match.arg(dataset)
+
+  # Map "dispersal" to the v2 URL
+  url_key <- if (dataset == "dispersal") "dispersal_v2" else dataset
+  # Map "ellenberg" to the ellenberg_only URL
+  if (dataset == "ellenberg") url_key <- "ellenberg_only"
+  if (dataset == "disturbance") url_key <- "disturbance_only"
+
+  url <- .floraveg_urls[[url_key]]
+  filename <- basename(sub("%20", " ", url))
+  dest_file <- file.path(dest_dir, filename)
+
+  if (file.exists(dest_file) && !overwrite) {
+    cli::cli_inform("File already exists: {.path {dest_file}} (use {.code overwrite = TRUE} to re-download)")
+    return(invisible(dest_file))
+  }
+
+  if (!dir.exists(dest_dir)) {
+    dir.create(dest_dir, recursive = TRUE)
+  }
+
+  cli::cli_inform("Downloading {.val {dataset}} from floraveg.eu...")
+  utils::download.file(url, dest_file, mode = "wb", quiet = FALSE)
+  cli::cli_inform("Saved to {.path {dest_file}}")
+
+  invisible(dest_file)
+}
+
+
 #' Read and clean Ellenberg indicator values
 #'
 #' Reads Ellenberg indicator values and disturbance classes from a floraveg.eu
 #' export (Excel file), resolves taxonomy, and matches to your species list.
+#' Can download the data automatically if no file is provided.
 #'
-#' @param file Path to the Ellenberg/disturbance Excel file (`.xlsx`),
-#'   as downloaded from <https://floraveg.eu/download/>.
+#' @param file Path to the Ellenberg/disturbance Excel file (`.xlsx`).
+#'   If `NULL`, the file is downloaded automatically from floraveg.eu
+#'   using [download_floraveg()].
 #' @param species A data frame with columns `species` (original names) and
 #'   `species_TNRS` (accepted names), as returned by [resolve_species()]
 #'   (use `submitted_name` and `accepted_name`). Alternatively, a character
@@ -28,6 +108,10 @@
 #' - Duplicate species (from subspecies matching) are averaged
 #' - Indicator columns are converted to numeric
 #'
+#' If `file = NULL`, the combined Ellenberg + disturbance dataset is
+#' downloaded to a temporary directory. To cache the file permanently,
+#' use [download_floraveg()] first and pass the path.
+#'
 #' @references
 #' Ellenberg values: <https://doi.org/10.1111/jvs.13168>
 #'
@@ -37,20 +121,16 @@
 #'
 #' @examples
 #' \dontrun{
-#' # First resolve your species
-#' taxonomy <- resolve_species(my_species)
-#' sp_df <- data.frame(
-#'   species = taxonomy$submitted_name,
-#'   species_TNRS = taxonomy$accepted_name
-#' )
+#' # Auto-download and clean
+#' indicators <- read_indicators(species = my_species)
 #'
-#' # Then clean indicators
+#' # Or provide a local file
 #' indicators <- read_indicators(
 #'   file = "data/Ellenberg_disturbance.xlsx",
-#'   species = sp_df
+#'   species = my_species
 #' )
 #' }
-read_indicators <- function(file,
+read_indicators <- function(file = NULL,
                             species,
                             species_col = "Species-levelName",
                             indicators = c("Light", "Moisture", "Temperature",
@@ -65,6 +145,11 @@ read_indicators <- function(file,
                             extra_matches = NULL,
                             ...) {
   rlang::check_installed("readxl", reason = "to read Excel files")
+
+  # Auto-download if no file provided
+  if (is.null(file)) {
+    file <- download_floraveg("ellenberg_disturbance")
+  }
 
   if (!file.exists(file)) {
     cli::cli_abort("File not found: {.path {file}}")
@@ -145,9 +230,12 @@ read_indicators <- function(file,
 #' Read and clean dispersal trait data
 #'
 #' Reads seed dispersal data from a Lososova et al. (2023) Excel export,
-#' resolves taxonomy, and matches to your species list.
+#' resolves taxonomy, and matches to your species list. Can download the
+#' data automatically if no file is provided.
 #'
-#' @param file Path to the dispersal Excel file (`.xlsx`).
+#' @param file Path to the dispersal Excel file (`.xlsx`). If `NULL`,
+#'   the file is downloaded automatically from floraveg.eu using
+#'   [download_floraveg()].
 #' @param species A data frame with columns `species` and `species_TNRS`,
 #'   or a character vector of accepted species names. See [read_indicators()].
 #' @param species_col Name of the species column in the Excel file.
@@ -168,24 +256,27 @@ read_indicators <- function(file,
 #'
 #' @examples
 #' \dontrun{
-#' taxonomy <- resolve_species(my_species)
-#' sp_df <- data.frame(
-#'   species = taxonomy$submitted_name,
-#'   species_TNRS = taxonomy$accepted_name
-#' )
+#' # Auto-download and clean
+#' dispersal <- read_dispersal(species = my_species)
 #'
+#' # Or provide a local file
 #' dispersal <- read_dispersal(
 #'   file = "data/Lososova_et_al_2023_Dispersal.xlsx",
-#'   species = sp_df
+#'   species = my_species
 #' )
 #' }
-read_dispersal <- function(file,
+read_dispersal <- function(file = NULL,
                            species,
                            species_col = "Taxon",
                            resolve_method = "tnrs",
                            extra_matches = NULL,
                            ...) {
   rlang::check_installed("readxl", reason = "to read Excel files")
+
+  # Auto-download if no file provided
+  if (is.null(file)) {
+    file <- download_floraveg("dispersal")
+  }
 
   if (!file.exists(file)) {
     cli::cli_abort("File not found: {.path {file}}")

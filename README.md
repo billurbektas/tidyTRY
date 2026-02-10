@@ -179,25 +179,32 @@ plot_trait_distributions(quanti, output_file = "trait_distributions.pdf")
 
 ## Ellenberg Indicators and Dispersal Traits
 
-The package also supports cleaning ecological indicator values and dispersal traits from external databases. Both functions handle taxonomy resolution and duplicate matching automatically.
+The package also supports cleaning ecological indicator values and dispersal traits from [floraveg.eu](https://floraveg.eu/download/). Data can be **downloaded automatically** -- no need to manually visit the website.
+
+### Download Data
+
+```r
+# Download datasets from floraveg.eu (cached, won't re-download)
+download_floraveg("ellenberg_disturbance")  # Ellenberg + disturbance combined
+download_floraveg("dispersal")              # Lososova et al. 2023 (v2)
+download_floraveg("ellenberg")              # Ellenberg values only
+download_floraveg("disturbance")            # Disturbance values only
+download_floraveg("life_form")              # Life form classifications
+
+# Cache permanently in your project
+download_floraveg("ellenberg_disturbance", dest_dir = "data/")
+```
 
 ### Ellenberg Indicators
 
-Reads Ellenberg indicator values (Light, Moisture, Temperature, etc.) and disturbance classes from [floraveg.eu](https://floraveg.eu/download/) Excel exports.
-
 ```r
-# Prepare your species list
-taxonomy <- resolve_species(my_species)
-sp_df <- data.frame(
-  species = taxonomy$submitted_name,
-  species_TNRS = taxonomy$accepted_name
-)
+# Auto-download + clean in one step
+indicators <- read_indicators(species = my_species)
 
-# Clean indicators
+# Or with more control
+taxonomy <- resolve_species(my_species)
 indicators <- read_indicators(
-  file = "data/Ellenberg_disturbance.xlsx",
-  species = sp_df,
-  # Optional: manual overrides for aggregate taxa
+  species = taxonomy,
   extra_matches = data.frame(
     species_source = "Taraxacum sect. Taraxacum",
     species_TNRS = "Taraxacum officinale"
@@ -207,12 +214,14 @@ indicators <- read_indicators(
 
 ### Dispersal Traits
 
-Reads seed dispersal data (seed mass, dispersal mode, distance classes) from the Lososova et al. (2023) database.
-
 ```r
+# Auto-download + clean
+dispersal <- read_dispersal(species = my_species)
+
+# Or from a local file
 dispersal <- read_dispersal(
   file = "data/Lososova_et_al_2023_Dispersal.xlsx",
-  species = sp_df
+  species = my_species
 )
 ```
 
