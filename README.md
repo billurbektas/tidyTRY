@@ -177,6 +177,45 @@ summ
 plot_trait_distributions(quanti, output_file = "trait_distributions.pdf")
 ```
 
+## Ellenberg Indicators and Dispersal Traits
+
+The package also supports cleaning ecological indicator values and dispersal traits from external databases. Both functions handle taxonomy resolution and duplicate matching automatically.
+
+### Ellenberg Indicators
+
+Reads Ellenberg indicator values (Light, Moisture, Temperature, etc.) and disturbance classes from [floraveg.eu](https://floraveg.eu/download/) Excel exports.
+
+```r
+# Prepare your species list
+taxonomy <- resolve_species(my_species)
+sp_df <- data.frame(
+  species = taxonomy$submitted_name,
+  species_TNRS = taxonomy$accepted_name
+)
+
+# Clean indicators
+indicators <- read_indicators(
+  file = "data/Ellenberg_disturbance.xlsx",
+  species = sp_df,
+  # Optional: manual overrides for aggregate taxa
+  extra_matches = data.frame(
+    species_source = "Taraxacum sect. Taraxacum",
+    species_TNRS = "Taraxacum officinale"
+  )
+)
+```
+
+### Dispersal Traits
+
+Reads seed dispersal data (seed mass, dispersal mode, distance classes) from the Lososova et al. (2023) database.
+
+```r
+dispersal <- read_dispersal(
+  file = "data/Lososova_et_al_2023_Dispersal.xlsx",
+  species = sp_df
+)
+```
+
 ## Advanced: Handling Special Traits
 
 Some traits like maturity (TraitID 155) need project-specific cleaning that goes beyond what the package automates. Here's an example of how to handle maturity data after using tidyTRY:
