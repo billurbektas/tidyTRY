@@ -33,7 +33,10 @@ NULL
   ErrorRisk = readr::col_double(),
   Reference = readr::col_character(),
   Comment = readr::col_character(),
-  StdValueStr = readr::col_character()
+  StdValueStr = readr::col_character(),
+  # TRY exports often have a trailing tab, creating a phantom 29th column.
+  # .default = col_skip() silently discards any unnamed/extra columns.
+  .default = readr::col_skip()
 )
 
 # Format file size in human-readable form

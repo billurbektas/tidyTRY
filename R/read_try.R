@@ -94,6 +94,13 @@ if (length(files) == 1 && dir.exists(files)) {
   })
 
   out <- dplyr::bind_rows(results)
+
+  # Drop phantom columns from trailing tabs (e.g., X29, ...30)
+  phantom_cols <- grep("^(\\.{3}\\d+|X\\d+)$", names(out), value = TRUE)
+  if (length(phantom_cols) > 0) {
+    out <- out[, !names(out) %in% phantom_cols, drop = FALSE]
+  }
+
   cli::cli_inform("Read {nrow(out)} rows from {length(files)} file{?s}.")
   out
 }
