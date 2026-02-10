@@ -117,6 +117,11 @@ resolve_species <- function(species,
     ...
   )
 
+  # WFO.match can return multiple rows per species (e.g., when a name
+  # is a synonym of multiple accepted names). WFO.one selects the best
+  # single match per species, prioritizing "Accepted" status.
+  res <- WorldFlora::WFO.one(res, verbose = FALSE)
+
   tibble::tibble(
     submitted_name = res$spec.name,
     accepted_name = res$scientificName,
