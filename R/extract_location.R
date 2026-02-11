@@ -163,28 +163,46 @@ extract_coordinates <- function(data,
 
 #' Extract climate zones from coordinates
 #'
-#' Assigns climate zone classifications to coordinates using a raster map
-#' (e.g., Koppen-Geiger). Requires the `terra` and `sf` packages.
+#' Assigns Koppen-Geiger climate zone classifications to coordinates. The
+#' package ships a 0.1-degree resolution raster and legend from Beck et al.
+#' (2023), so no external files are needed. You can also supply your own
+#' raster and legend. Requires the `terra` and `sf` packages.
 #'
 #' @param coords A data frame with `Latitude` and `Longitude` columns
 #'   (as returned by [extract_coordinates()]).
-#' @param climate_raster A `SpatRaster` object (from `terra::rast()`)
-#'   containing climate zone classifications.
-#' @param legend Optional data frame mapping raster values to climate
-#'   zone names. Should have a column matching the raster values and
-#'   descriptive columns.
+#' @param climate_raster A `SpatRaster` object (from `terra::rast()`).
+#'   If `NULL` (default), uses the bundled Koppen-Geiger raster.
+#' @param legend A data frame mapping raster values to climate zone names.
+#'   If `NULL` (default) and using the bundled raster, the bundled legend
+#'   is loaded automatically.
 #'
-#' @return The input data frame with an added `Climate` column (and any
-#'   legend columns if provided).
+#' @return The input data frame with added `Climate` (integer raster value),
+#'   `climate_code` (e.g., "Cfb"), and `climate_description` columns.
 #' @export
-extract_climate_zones <- function(coords, climate_raster, legend = NULL) {
+extract_climate_zones <- function(coords, climate_raster = NULL, legend = NULL) {
   rlang::check_installed("terra", reason = "to extract climate zones from raster data")
   rlang::check_installed("sf", reason = "to work with spatial coordinates")
 
   if (nrow(coords) == 0) {
     cli::cli_warn("No coordinates provided.")
     coords$Climate <- integer()
+    coords$climate_code <- character()
+    coords$climate_description <- character()
     return(coords)
+  }
+
+  # Use bundled Koppen-Geiger data if no raster provided
+  if (is.null(climate_raster)) {
+    raster_path <- system.file("extdata", "koppen_geiger_0p1.tif",
+                               package = "tidyTRY")
+    if (raster_path == "") {
+      cli::cli_abort("Bundled climate raster not found. Reinstall tidyTRY.")
+    }
+    climate_raster <- terra::rast(raster_path)
+  }
+
+  if (is.null(legend)) {
+    legend <- .load_climate_legend()
   }
 
   coords_sf <- sf::st_as_sf(
@@ -205,4 +223,32 @@ extract_climate_zones <- function(coords, climate_raster, legend = NULL) {
 
   cli::cli_inform("Assigned climate zones to {nrow(coords)} observation{?s}.")
   coords
+}
+
+
+# Internal: load the bundled Koppen-Geiger legend
+.load_climate_legend <- function() {
+  legend_path <- system.file("extdata", "koppen_geiger_legend.txt",
+                             package = "tidyTRY")
+  if (legend_path == "") return(NULL)
+
+  lines <- readLines(legend_path)
+  # Keep only lines that start with a number (the actual legend entries)
+  data_lines <- lines[grepl("^\\s*\\d+:", lines)]
+
+  # Parse: "    1:  Af   Tropical, rainforest                  [0 0 255]"
+  legend <- do.call(rbind, lapply(data_lines, function(line) {
+    # Remove the RGB bracket part
+    line <- sub("\\[.*\\]", "", line)
+    # Extract: number, code, description
+    m <- regmatches(line, regexec("^\\s*(\\d+):\\s+(\\S+)\\s+(.+)$", line))[[1]]
+    data.frame(
+      Climate = as.integer(m[2]),
+      climate_code = trimws(m[3]),
+      climate_description = trimws(m[4]),
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  legend
 }
