@@ -249,6 +249,16 @@ maturity <- dat |>
   )
 ```
 
+## References
+
+The cleaning workflow in this package is inspired by:
+
+> Bjorkman, A.D., Myers-Smith, I.H., Elmendorf, S.C. et al. (2018). Plant functional trait change across a warming tundra biome. *Nature*, 562, 57--62. https://doi.org/10.1038/s41586-018-0563-7
+
+Climate zone classification uses the Koppen-Geiger maps from:
+
+> Beck, H.E., McVicar, T.R., Vergopolan, N. et al. (2023). High-resolution (1 km) Koppen-Geiger maps for 1901--2099 based on constrained CMIP6 projections. *Scientific Data*, 10, 724. https://doi.org/10.1038/s41597-023-02549-6
+
 ## License
 
 MIT
