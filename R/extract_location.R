@@ -103,7 +103,7 @@ extract_coordinates <- function(data,
     # Keep only values that look like numbers (digits, optional sign, decimal point)
     # This removes place names, empty strings, and other non-numeric text
     # so as.numeric() below won't produce coercion warnings
-    dplyr::filter(grepl("^[+-]?[0-9]*\\.?[0-9]+$", .data$value)) |>
+    dplyr::filter(grepl("^[+-]?[0-9]*\\.?[0-9]+$", .data$value, useBytes = TRUE)) |>
     dplyr::mutate(value = as.numeric(.data$value))
 
   # Apply manual corrections if provided
