@@ -114,12 +114,15 @@ if (length(files) == 1 && dir.exists(files)) {
     chunk[mask, , drop = FALSE]
   }
 
-  readr::read_tsv_chunked(
-    file,
-    callback = readr::DataFrameCallback$new(callback_fn),
-    chunk_size = chunk_size,
-    col_types = .try_col_spec,
-    progress = progress,
-    show_col_types = FALSE
+  # Suppress "Missing column names filled in: 'X29'" warning from trailing tabs
+  suppressWarnings(
+    readr::read_tsv_chunked(
+      file,
+      callback = readr::DataFrameCallback$new(callback_fn),
+      chunk_size = chunk_size,
+      col_types = .try_col_spec,
+      progress = progress,
+      show_col_types = FALSE
+    )
   )
 }

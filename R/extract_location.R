@@ -102,7 +102,9 @@ extract_coordinates <- function(data,
     dplyr::filter(!is.na(.data$coord_type)) |>
     # Remove values that contain letters (place names, not coordinates)
     dplyr::filter(!stringr::str_detect(.data$value, "[a-zA-Z]")) |>
-    dplyr::mutate(value = as.numeric(.data$value)) |>
+    # Suppress "NAs introduced by coercion" -- non-numeric values are
+    # filtered on the next line anyway
+    dplyr::mutate(value = suppressWarnings(as.numeric(.data$value))) |>
     dplyr::filter(!is.na(.data$value))
 
   # Apply manual corrections if provided
