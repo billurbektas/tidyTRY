@@ -155,8 +155,8 @@ read_indicators <- function(file = NULL,
     cli::cli_abort("File not found: {.path {file}}")
   }
 
-  # Normalize species input
-  sp_df <- .normalize_species_input(species)
+  # Normalize species input and resolve YOUR species taxonomy
+  sp_df <- .normalize_species_input(species, resolve_method = resolve_method, ...)
 
   # Read source data
   cli::cli_inform("Reading indicators from {.path {basename(file)}}...")
@@ -183,29 +183,31 @@ read_indicators <- function(file = NULL,
     cli::cli_abort("None of the requested indicator columns found in the data.")
   }
 
-  # Resolve taxonomy from the source dataset
-  cli::cli_inform("Resolving taxonomy for source species...")
-  source_sp <- unique(raw$species_source)
-  source_resolved <- resolve_species(source_sp, method = resolve_method, ...)
-  source_match <- tibble::tibble(
-    species_source = source_resolved$submitted_name,
-    species_TNRS = source_resolved$accepted_name
-  )
-
   # Add extra manual matches
   if (!is.null(extra_matches)) {
-    source_match <- dplyr::bind_rows(source_match, extra_matches)
+    sp_df <- dplyr::bind_rows(sp_df, extra_matches |>
+      dplyr::rename(species_original = species_source, species_resolved = species_TNRS))
   }
 
-  # Join: source resolved names -> source data -> user species
-  result <- source_match |>
-    dplyr::left_join(raw, by = "species_source") |>
-    dplyr::inner_join(sp_df, by = "species_TNRS")
+  # Match: look up your resolved species names in the source data
+  # Try matching on both original and resolved names
+  result <- sp_df |>
+    dplyr::left_join(raw, by = c("species_resolved" = "species_source")) |>
+    dplyr::filter(!dplyr::if_all(dplyr::all_of(available), is.na))
+
+  # For species not matched via resolved name, try original name
+  unmatched <- sp_df |>
+    dplyr::filter(!.data$species_original %in% result$species_original) |>
+    dplyr::left_join(raw, by = c("species_original" = "species_source")) |>
+    dplyr::filter(!dplyr::if_all(dplyr::all_of(available), is.na))
+
+  result <- dplyr::bind_rows(result, unmatched)
 
   # Select relevant columns
   result <- result |>
     dplyr::select(
-      dplyr::all_of(c("species", "species_TNRS", "species_source")),
+      species_original = "species_original",
+      species_resolved = "species_resolved",
       dplyr::all_of(available)
     )
 
@@ -220,7 +222,7 @@ read_indicators <- function(file = NULL,
     ))
 
   # Handle duplicates: average numeric values
-  result <- .handle_duplicates(result, "species", available)
+  result <- .handle_duplicates(result, "species_original", available)
 
   cli::cli_inform("Matched indicators for {nrow(result)} species.")
   result
@@ -282,8 +284,8 @@ read_dispersal <- function(file = NULL,
     cli::cli_abort("File not found: {.path {file}}")
   }
 
-  # Normalize species input
-  sp_df <- .normalize_species_input(species)
+  # Normalize species input and resolve YOUR species taxonomy
+  sp_df <- .normalize_species_input(species, resolve_method = resolve_method, ...)
 
   # Read source data
   cli::cli_inform("Reading dispersal data from {.path {basename(file)}}...")
@@ -315,28 +317,30 @@ read_dispersal <- function(file = NULL,
     cli::cli_warn("Dispersal column{?s} not found: {.val {missing_cols}}")
   }
 
-  # Resolve taxonomy from source
-  cli::cli_inform("Resolving taxonomy for source species...")
-  source_sp <- unique(raw$species_source)
-  source_resolved <- resolve_species(source_sp, method = resolve_method, ...)
-  source_match <- tibble::tibble(
-    species_source = source_resolved$submitted_name,
-    species_TNRS = source_resolved$accepted_name
-  )
-
+  # Add extra manual matches
   if (!is.null(extra_matches)) {
-    source_match <- dplyr::bind_rows(source_match, extra_matches)
+    sp_df <- dplyr::bind_rows(sp_df, extra_matches |>
+      dplyr::rename(species_original = species_source, species_resolved = species_TNRS))
   }
 
-  # Join
-  result <- source_match |>
-    dplyr::left_join(raw, by = "species_source") |>
-    dplyr::inner_join(sp_df, by = "species_TNRS")
+  # Match: look up your resolved species names in the source data
+  result <- sp_df |>
+    dplyr::left_join(raw, by = c("species_resolved" = "species_source")) |>
+    dplyr::filter(!dplyr::if_all(dplyr::all_of(available_cols), is.na))
+
+  # For species not matched via resolved name, try original name
+  unmatched <- sp_df |>
+    dplyr::filter(!.data$species_original %in% result$species_original) |>
+    dplyr::left_join(raw, by = c("species_original" = "species_source")) |>
+    dplyr::filter(!dplyr::if_all(dplyr::all_of(available_cols), is.na))
+
+  result <- dplyr::bind_rows(result, unmatched)
 
   # Select and rename columns
   result <- result |>
     dplyr::select(
-      dplyr::all_of(c("species", "species_TNRS", "species_source")),
+      species_original = "species_original",
+      species_resolved = "species_resolved",
       dplyr::all_of(available_cols)
     )
 
@@ -360,36 +364,44 @@ read_dispersal <- function(file = NULL,
     ))
 
   # Handle duplicates
-  result <- .handle_duplicates(result, "species", short_names)
+  result <- .handle_duplicates(result, "species_original", short_names)
 
   cli::cli_inform("Matched dispersal data for {nrow(result)} species.")
   result
 }
 
 
-# Internal: normalize species input to a data frame with species + species_TNRS
-.normalize_species_input <- function(species) {
-  if (is.character(species)) {
-    return(tibble::tibble(species = species, species_TNRS = species))
-  }
-
+# Internal: normalize species input to a data frame with species_original + species_resolved.
+# If a character vector is provided, resolves taxonomy first.
+# If a data frame (from resolve_species()) is provided, uses it directly.
+.normalize_species_input <- function(species, resolve_method = "tnrs", ...) {
   if (is.data.frame(species)) {
-    # Support both our naming and resolve_species() output naming
+    # Support resolve_species() output naming
     if ("submitted_name" %in% names(species) && "accepted_name" %in% names(species)) {
       return(tibble::tibble(
-        species = species$submitted_name,
-        species_TNRS = species$accepted_name
+        species_original = species$submitted_name,
+        species_resolved = species$accepted_name
       ))
     }
-    if ("species" %in% names(species) && "species_TNRS" %in% names(species)) {
+    # Support custom naming
+    if ("species_original" %in% names(species) && "species_resolved" %in% names(species)) {
       return(tibble::tibble(
-        species = species$species,
-        species_TNRS = species$species_TNRS
+        species_original = species$species_original,
+        species_resolved = species$species_resolved
       ))
     }
     cli::cli_abort(
-      "Species data frame must have columns {.val species}/{.val species_TNRS} or {.val submitted_name}/{.val accepted_name}."
+      "Species data frame must have columns {.val submitted_name}/{.val accepted_name} (from resolve_species()) or {.val species_original}/{.val species_resolved}."
     )
+  }
+
+  if (is.character(species)) {
+    cli::cli_inform("Resolving taxonomy for your species list...")
+    resolved <- resolve_species(species, method = resolve_method, ...)
+    return(tibble::tibble(
+      species_original = resolved$submitted_name,
+      species_resolved = resolved$accepted_name
+    ))
   }
 
   cli::cli_abort("{.arg species} must be a character vector or a data frame.")
@@ -408,7 +420,7 @@ read_dispersal <- function(file = NULL,
 
   dup_data <- data |>
     dplyr::filter(.data[[species_col]] %in% dup_sp) |>
-    dplyr::group_by(.data[[species_col]], .data$species_TNRS)
+    dplyr::group_by(.data[[species_col]], .data$species_resolved)
 
   # Average numeric columns, take first non-NA for character columns
   numeric_val_cols <- intersect(
@@ -430,11 +442,6 @@ read_dispersal <- function(file = NULL,
       dplyr::where(is.numeric),
       ~ ifelse(is.nan(.), NA_real_, .)
     ))
-
-  # Add back species_source as NA for averaged duplicates
-  if ("species_source" %in% names(non_dup) && !"species_source" %in% names(dup_summary)) {
-    dup_summary$species_source <- NA_character_
-  }
 
   dplyr::bind_rows(non_dup, dup_summary)
 }
