@@ -114,21 +114,24 @@ if (length(files) == 1 && dir.exists(files)) {
     chunk[mask, , drop = FALSE]
   }
 
-  # TRY exports have a trailing tab creating a phantom 29th column.
-  # readr warns "Missing column names filled in: 'X29'" during header parsing.
-  # Use withCallingHandlers to muffle only that specific warning.
-  withCallingHandlers(
-    readr::read_tsv_chunked(
-      file,
-      callback = readr::DataFrameCallback$new(callback_fn),
-      chunk_size = chunk_size,
-      col_types = .try_col_spec,
-      progress = progress,
-      show_col_types = FALSE
-    ),
-    warning = function(w) {
-      if (grepl("Missing column names filled in", conditionMessage(w)))
-        invokeRestart("muffleWarning")
-    }
+  # TRY exports often have a trailing tab, creating unnamed phantom columns.
+  # Read the header ourselves and give explicit names to any empty columns
+  # so readr never needs to auto-fill names (which triggers a warning).
+  header_line <- readr::read_lines(file, n_max = 1)
+  col_names <- strsplit(header_line, "\t")[[1]]
+  empty <- col_names == ""
+  if (any(empty)) {
+    col_names[empty] <- paste0(".phantom_", seq_len(sum(empty)))
+  }
+
+  readr::read_tsv_chunked(
+    file,
+    callback = readr::DataFrameCallback$new(callback_fn),
+    col_names = col_names,
+    skip = 1L,
+    chunk_size = chunk_size,
+    col_types = .try_col_spec,
+    progress = progress,
+    show_col_types = FALSE
   )
 }
