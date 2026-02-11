@@ -114,8 +114,10 @@ if (length(files) == 1 && dir.exists(files)) {
     chunk[mask, , drop = FALSE]
   }
 
-  # Suppress "Missing column names filled in: 'X29'" warning from trailing tabs
-  suppressWarnings(
+  # TRY exports have a trailing tab creating a phantom 29th column.
+  # readr warns "Missing column names filled in: 'X29'" during header parsing.
+  # Use withCallingHandlers to muffle only that specific warning.
+  withCallingHandlers(
     readr::read_tsv_chunked(
       file,
       callback = readr::DataFrameCallback$new(callback_fn),
@@ -123,6 +125,10 @@ if (length(files) == 1 && dir.exists(files)) {
       col_types = .try_col_spec,
       progress = progress,
       show_col_types = FALSE
-    )
+    ),
+    warning = function(w) {
+      if (grepl("Missing column names filled in", conditionMessage(w)))
+        invokeRestart("muffleWarning")
+    }
   )
 }
