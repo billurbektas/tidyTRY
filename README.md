@@ -17,6 +17,7 @@ TRY data exports are large (often 1-10+ GB), messy, and require substantial clea
 - **Error risk filtering** for quantitative trait quality control
 - **Trait renaming** with a flexible many-to-one mapping API (e.g., merge 3 SLA variants into "SLA")
 - **Coordinate extraction** via DataID 59/60 (with DataName fallback)
+- **Climate zone classification** with bundled Koppen-Geiger raster (Beck et al. 2023)
 - **Diagnostic summaries** and **distribution plots** for visual QC
 
 ## Installation
@@ -151,7 +152,7 @@ write.csv(my_map, "my_trait_map.csv", row.names = FALSE)
 my_map <- read_trait_map("my_trait_map.csv")
 ```
 
-### Step 5: Extract Location Data
+### Step 5: Extract Location Data and Climate Zones
 
 TRY stores latitude/longitude as metadata rows within the export. Extract them:
 
@@ -159,11 +160,14 @@ TRY stores latitude/longitude as metadata rows within the export. Extract them:
 coords <- extract_coordinates(dat)
 head(coords)
 
-# Optionally extract climate zones (requires terra + sf + a raster)
+# Assign Koppen-Geiger climate zones (raster + legend are bundled in the package)
+coords <- extract_climate_zones(coords)
+head(coords[, c("ObservationID", "Latitude", "Longitude", "climate_code", "climate_description")])
+
+# Or supply your own raster
 library(terra)
-kg_raster <- rast("data/koppen_geiger_0p1.tif")
-kg_legend <- read.csv2("data/koppen_geiger_legend.txt")
-coords <- extract_climate_zones(coords, kg_raster, legend = kg_legend)
+my_raster <- rast("path/to/my_climate_raster.tif")
+coords <- extract_climate_zones(coords, climate_raster = my_raster, legend = my_legend)
 ```
 
 ### Step 6: Diagnostics
