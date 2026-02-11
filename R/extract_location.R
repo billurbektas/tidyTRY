@@ -1,14 +1,16 @@
 #' Extract coordinates from TRY data
 #'
-#' Parses latitude and longitude information from the `DataName` field in TRY
-#' data. TRY stores location information as metadata rows within the main
-#' data export, not as separate columns. This function extracts and pivots
-#' that information into a usable format.
+#' Extracts latitude and longitude from TRY data. TRY stores location
+#' information as covariate rows: Latitude is DataID 59 and Longitude is
+#' DataID 60, with standardized values in the `StdValue` column (see TRY 6.0
+#' Release Notes, section c). Falls back to `DataName` string matching for
+#' older exports that may use different DataIDs.
 #'
 #' @param data A data frame of TRY data (as returned by [read_try()]).
 #' @param corrections Optional data frame with manual coordinate corrections.
 #'   Must have columns `ObservationID` (or `DatasetID`) plus `Latitude`
 #'   and/or `Longitude`. These override extracted values.
+#' @param data_id_col Name of the DataID column. Defaults to `"DataID"`.
 #' @param data_name_col Name of the DataName column. Defaults to `"DataName"`.
 #' @param std_value_col Name of the StdValue column. Defaults to `"StdValue"`.
 #' @param orig_value_col Name of the OrigValueStr column. Defaults to `"OrigValueStr"`.
@@ -20,26 +22,43 @@
 #' @export
 extract_coordinates <- function(data,
                                 corrections = NULL,
+                                data_id_col = "DataID",
                                 data_name_col = "DataName",
                                 std_value_col = "StdValue",
                                 orig_value_col = "OrigValueStr",
                                 observation_col = "ObservationID",
                                 dataset_col = "DatasetID") {
-  # Filter rows that contain location information
-  loc_data <- data |>
-    dplyr::filter(
-      stringr::str_detect(
-        .data[[data_name_col]],
-        stringr::regex("longitude|latitude", ignore_case = TRUE)
+  # Primary: use DataID 59 (Latitude) and 60 (Longitude) per TRY 6.0 spec
+  has_data_id <- data_id_col %in% names(data)
+
+  if (has_data_id) {
+    loc_data <- data |>
+      dplyr::filter(.data[[data_id_col]] %in% c(59L, 60L)) |>
+      dplyr::select(
+        dplyr::all_of(c(dataset_col, "Dataset", observation_col, data_id_col,
+                         orig_value_col, std_value_col))
       )
-    ) |>
-    dplyr::select(
-      dplyr::all_of(c(dataset_col, "Dataset", observation_col, data_name_col,
-                       orig_value_col, std_value_col))
-    )
+  } else {
+    loc_data <- data[0, ]
+  }
+
+  # Fallback: match on DataName if DataID approach found nothing
+  if (nrow(loc_data) == 0) {
+    loc_data <- data |>
+      dplyr::filter(
+        stringr::str_detect(
+          .data[[data_name_col]],
+          stringr::regex("longitude|latitude", ignore_case = TRUE)
+        )
+      ) |>
+      dplyr::select(
+        dplyr::all_of(c(dataset_col, "Dataset", observation_col, data_name_col,
+                         orig_value_col, std_value_col))
+      )
+  }
 
   if (nrow(loc_data) == 0) {
-    cli::cli_warn("No location data found in the DataName field.")
+    cli::cli_warn("No location data found.")
     return(tibble::tibble(
       DatasetID = integer(),
       Dataset = character(),
@@ -49,19 +68,36 @@ extract_coordinates <- function(data,
     ))
   }
 
-  # Determine coordinate type and use StdValue preferentially
-  loc_data <- loc_data |>
-    dplyr::mutate(
-      value = dplyr::if_else(
-        !is.na(.data[[std_value_col]]),
-        as.character(.data[[std_value_col]]),
-        .data[[orig_value_col]]
-      ),
-      coord_type = dplyr::case_when(
-        stringr::str_detect(.data[[data_name_col]], stringr::regex("longitude", ignore_case = TRUE)) ~ "Longitude",
-        stringr::str_detect(.data[[data_name_col]], stringr::regex("latitude", ignore_case = TRUE)) ~ "Latitude"
+  # Determine coordinate type: prefer DataID, fall back to DataName
+  if (has_data_id && data_id_col %in% names(loc_data)) {
+    loc_data <- loc_data |>
+      dplyr::mutate(
+        value = dplyr::if_else(
+          !is.na(.data[[std_value_col]]),
+          as.character(.data[[std_value_col]]),
+          .data[[orig_value_col]]
+        ),
+        coord_type = dplyr::case_when(
+          .data[[data_id_col]] == 59L ~ "Latitude",
+          .data[[data_id_col]] == 60L ~ "Longitude"
+        )
       )
-    ) |>
+  } else {
+    loc_data <- loc_data |>
+      dplyr::mutate(
+        value = dplyr::if_else(
+          !is.na(.data[[std_value_col]]),
+          as.character(.data[[std_value_col]]),
+          .data[[orig_value_col]]
+        ),
+        coord_type = dplyr::case_when(
+          stringr::str_detect(.data[[data_name_col]], stringr::regex("latitude", ignore_case = TRUE)) ~ "Latitude",
+          stringr::str_detect(.data[[data_name_col]], stringr::regex("longitude", ignore_case = TRUE)) ~ "Longitude"
+        )
+      )
+  }
+
+  loc_data <- loc_data |>
     dplyr::filter(!is.na(.data$value)) |>
     dplyr::filter(!is.na(.data$coord_type)) |>
     # Remove values that contain letters (place names, not coordinates)

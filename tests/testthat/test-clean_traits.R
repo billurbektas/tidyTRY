@@ -11,17 +11,30 @@ test_that("get_trait_info extracts unique traits", {
   expect_true(14 %in% info$TraitID)
 })
 
-test_that("remove_experiments removes treatment datasets", {
+test_that("remove_experiments removes treatment datasets via DataID 327", {
   f <- test_path("fixtures", "sample_try.txt")
   data <- read_try(f)
 
-  # Dataset 300 has a Treatment row
+  # Dataset 300 has an Exposition row (DataID 327)
   expect_true(300 %in% data$DatasetID)
 
   cleaned <- remove_experiments(data)
   expect_false(300 %in% cleaned$DatasetID)
   # Other datasets still present
   expect_true(100 %in% cleaned$DatasetID)
+})
+
+test_that("remove_duplicates removes records where OrigObsDataID != ObsDataID", {
+  f <- test_path("fixtures", "sample_try.txt")
+  data <- read_try(f)
+
+  # Fixture has a duplicate row (ObsDataID 10015 with OrigObsDataID 10011)
+  expect_true(10015 %in% data$ObsDataID)
+
+  cleaned <- remove_duplicates(data)
+  expect_false(10015 %in% cleaned$ObsDataID)
+  # Original record still present
+  expect_true(10011 %in% cleaned$ObsDataID)
 })
 
 test_that("split_traits separates qualitative and quantitative", {

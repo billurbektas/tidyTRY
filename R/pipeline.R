@@ -85,6 +85,10 @@ process_try <- function(files,
   cli::cli_rule("Step 4: Removing experimental datasets")
   data <- remove_experiments(data)
 
+  # Step 4b: Remove duplicates
+  cli::cli_rule("Step 4b: Removing duplicate records")
+  data <- remove_duplicates(data)
+
   # Step 5: Split traits
   cli::cli_rule("Step 5: Splitting traits")
   split <- split_traits(data, qualitative_ids = qualitative_ids)

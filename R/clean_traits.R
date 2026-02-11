@@ -25,20 +25,41 @@ get_trait_info <- function(data, trait_id_col = "TraitID", trait_name_col = "Tra
 #' Remove experimental datasets
 #'
 #' Identifies datasets that contain treatment/experimental data and removes
-#' all observations from those datasets. In TRY, experimental datasets are
-#' flagged by rows where `DataName == "Treatment"`.
+#' all observations from those datasets. Per the TRY 6.0 Release Notes,
+#' experimental conditions are flagged via DataID 327 ("Exposition"). Falls
+#' back to matching `DataName == "Treatment"` for compatibility with older
+#' exports.
 #'
 #' @param data A data frame of TRY data.
+#' @param data_id_col Name of the DataID column. Defaults to `"DataID"`.
 #' @param data_name_col Name of the DataName column. Defaults to `"DataName"`.
 #' @param dataset_id_col Name of the DatasetID column. Defaults to `"DatasetID"`.
 #'
 #' @return The input data frame with experimental datasets removed.
 #' @export
-remove_experiments <- function(data, data_name_col = "DataName", dataset_id_col = "DatasetID") {
-  experiment_ids <- data |>
+remove_experiments <- function(data,
+                               data_id_col = "DataID",
+                               data_name_col = "DataName",
+                               dataset_id_col = "DatasetID") {
+  # Primary: DataID 327 = Exposition / experimental conditions (TRY 6.0 spec)
+  has_data_id <- data_id_col %in% names(data)
+
+  if (has_data_id) {
+    experiment_ids <- data |>
+      dplyr::filter(.data[[data_id_col]] == 327L) |>
+      dplyr::pull(.data[[dataset_id_col]]) |>
+      unique()
+  } else {
+    experiment_ids <- integer(0)
+  }
+
+  # Fallback: also check DataName == "Treatment" for older exports
+  experiment_ids_fallback <- data |>
     dplyr::filter(.data[[data_name_col]] == "Treatment") |>
     dplyr::pull(.data[[dataset_id_col]]) |>
     unique()
+
+  experiment_ids <- unique(c(experiment_ids, experiment_ids_fallback))
 
   if (length(experiment_ids) > 0) {
     cli::cli_inform("Removing {length(experiment_ids)} experimental dataset{?s} (DatasetID: {experiment_ids}).")
@@ -47,6 +68,44 @@ remove_experiments <- function(data, data_name_col = "DataName", dataset_id_col 
   } else {
     cli::cli_inform("No experimental datasets found.")
   }
+
+  data
+}
+
+
+#' Remove duplicate records
+#'
+#' Removes duplicate trait records flagged by TRY. Per the TRY 6.0 Release
+#' Notes, when the same data has been contributed by different sources, the
+#' later contribution is marked as a duplicate: its `OrigObsDataID` column
+#' points to the original record's `ObsDataID`. Records where
+#' `OrigObsDataID != ObsDataID` are duplicates and can be safely removed.
+#'
+#' @param data A data frame of TRY data.
+#' @param obs_data_id_col Name of the ObsDataID column. Defaults to `"ObsDataID"`.
+#' @param orig_obs_data_id_col Name of the OrigObsDataID column. Defaults to
+#'   `"OrigObsDataID"`.
+#'
+#' @return The input data frame with duplicate records removed.
+#' @export
+remove_duplicates <- function(data,
+                              obs_data_id_col = "ObsDataID",
+                              orig_obs_data_id_col = "OrigObsDataID") {
+  if (!orig_obs_data_id_col %in% names(data) || !obs_data_id_col %in% names(data)) {
+    cli::cli_warn("Column{?s} {.field {orig_obs_data_id_col}} or {.field {obs_data_id_col}} not found. Skipping duplicate removal.")
+    return(data)
+  }
+
+  n_before <- nrow(data)
+
+  data <- data |>
+    dplyr::filter(
+      is.na(.data[[orig_obs_data_id_col]]) |
+        .data[[orig_obs_data_id_col]] == .data[[obs_data_id_col]]
+    )
+
+  n_removed <- n_before - nrow(data)
+  cli::cli_inform("Removed {n_removed} duplicate record{?s}. {nrow(data)} rows remaining.")
 
   data
 }

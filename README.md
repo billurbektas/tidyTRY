@@ -11,11 +11,12 @@ TRY data exports are large (often 1-10+ GB), messy, and require substantial clea
 - **Memory-efficient reading** of large TRY files using chunked processing
 - **Species filtering** at read time (critical for multi-GB files)
 - **Taxonomy resolution** via TNRS (online) or WorldFlora (offline)
-- **Experiment removal** (automatic detection of treatment datasets)
+- **Experiment removal** (via DataID 327, per TRY 6.0 spec)
+- **Duplicate removal** (via OrigObsDataID flagging)
 - **Trait type splitting** (quantitative vs qualitative)
 - **Error risk filtering** for quantitative trait quality control
 - **Trait renaming** with a flexible many-to-one mapping API (e.g., merge 3 SLA variants into "SLA")
-- **Coordinate extraction** from TRY's embedded location metadata
+- **Coordinate extraction** via DataID 59/60 (with DataName fallback)
 - **Diagnostic summaries** and **distribution plots** for visual QC
 
 ## Installation
@@ -105,8 +106,11 @@ taxonomy <- resolve_species(my_species, method = "worldflora",
 trait_info <- get_trait_info(dat)
 trait_info
 
-# Remove experimental datasets (treatment studies)
+# Remove experimental datasets (detected via DataID 327)
 dat <- remove_experiments(dat)
+
+# Remove duplicate records (flagged via OrigObsDataID)
+dat <- remove_duplicates(dat)
 
 # Decide which traits are qualitative (you must inspect trait_info first!)
 # For example, trait 341 = "Plant life form (Raunkiaer life form)"

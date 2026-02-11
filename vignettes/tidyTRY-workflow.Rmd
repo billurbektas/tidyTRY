@@ -72,8 +72,11 @@ taxonomy
 trait_info <- get_trait_info(dat)
 trait_info
 
-# Remove experimental datasets (treatment studies)
+# Remove experimental datasets (detected via DataID 327)
 dat <- remove_experiments(dat)
+
+# Remove duplicate records (flagged via OrigObsDataID)
+dat <- remove_duplicates(dat)
 
 # Decide which traits are qualitative (you must inspect trait_info first!)
 # For example, trait 341 = "Plant life form (Raunkiaer life form)"
