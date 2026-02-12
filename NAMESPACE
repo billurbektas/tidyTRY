@@ -3,6 +3,7 @@
 export(clean_quantitative)
 export(default_trait_map)
 export(extract_climate_zones)
+export(fix_species_case)
 export(extract_coordinates)
 export(get_trait_info)
 export(list_try_files)

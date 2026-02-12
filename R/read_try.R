@@ -82,7 +82,7 @@ if (length(files) == 1 && dir.exists(files)) {
     total_size <- sum(file.info(files)$size)
     if (total_size > 1e9) { # > 1 GB
       cli::cli_warn(c(
-        "Reading {length(files)} file{?s} ({.format_size(total_size)}) without species filter.",
+        "Reading {length(files)} file{?s} ({(.format_size(total_size))}) without species filter.",
         "i" = "This may use a lot of memory. Consider passing a {.arg species} vector."
       ))
     }
@@ -108,9 +108,15 @@ if (length(files) == 1 && dir.exists(files)) {
 
 # Internal: read a single TRY file with chunked species filtering
 .read_try_single <- function(file, species, chunk_size, progress) {
+  # Pre-compute lowercase species set for case-insensitive AccSpeciesName
+  # matching (TRY stores some AccSpeciesName in ALL CAPS)
+  species_lower <- if (!is.null(species)) tolower(species) else NULL
+
   callback_fn <- function(chunk, pos) {
     if (is.null(species)) return(chunk)
-    mask <- (chunk$SpeciesName %in% species) | (chunk$AccSpeciesName %in% species)
+    mask <- (chunk$SpeciesName %in% species) |
+      (chunk$AccSpeciesName %in% species) |
+      (tolower(chunk$AccSpeciesName) %in% species_lower)
     chunk[mask, , drop = FALSE]
   }
 

@@ -77,6 +77,13 @@ process_try <- function(files,
   cli::cli_rule("Step 2: Reading TRY data")
   data <- read_try(files, species = resolved_species, chunk_size = chunk_size)
 
+  # Fix ALL-CAPS species names (TRY quirk for hyphenated epithets)
+  n_caps <- sum(grepl("^[A-Z][A-Z]", data$AccSpeciesName), na.rm = TRUE)
+  if (n_caps > 0) {
+    cli::cli_inform("Fixing {n_caps} all-caps AccSpeciesName entr{?y/ies}.")
+    data$AccSpeciesName <- fix_species_case(data$AccSpeciesName)
+  }
+
   # Step 3: Get trait info
   cli::cli_rule("Step 3: Inspecting traits")
   trait_info <- get_trait_info(data)

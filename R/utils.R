@@ -39,6 +39,32 @@ NULL
   .default = readr::col_skip()
 )
 
+#' Fix species name capitalization
+#'
+#' TRY stores some species names in ALL CAPS (typically those with hyphens in
+#' the epithet, e.g., `"VACCINIUM VITIS-IDAEA"`). This function normalizes
+#' them to standard binomial format: genus capitalized, epithet lowercase
+#' (e.g., `"Vaccinium vitis-idaea"`). Names already in proper case are
+#' returned unchanged.
+#'
+#' @param x Character vector of species names.
+#'
+#' @return Character vector with corrected capitalization.
+#' @export
+#'
+#' @examples
+#' fix_species_case("VACCINIUM VITIS-IDAEA")
+#' # "Vaccinium vitis-idaea"
+#'
+#' fix_species_case(c("Papaver rhoeas", "CAPSELLA BURSA-PASTORIS"))
+#' # c("Papaver rhoeas", "Capsella bursa-pastoris")
+fix_species_case <- function(x) {
+  needs_fix <- !is.na(x) & grepl("^[A-Z][A-Z]", x)
+  x[needs_fix] <- sub("^(\\w)", "\\U\\1", tolower(x[needs_fix]), perl = TRUE)
+  x
+}
+
+
 # Format file size in human-readable form
 .format_size <- function(bytes) {
   units <- c("B", "KB", "MB", "GB", "TB")
