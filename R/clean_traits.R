@@ -127,6 +127,15 @@ remove_duplicates <- function(data,
 #'   is an empty data frame.
 #' @export
 split_traits <- function(data, qualitative_ids = NULL, trait_id_col = "TraitID") {
+  # Remove metadata/covariate rows (TraitID is NA for non-trait rows like
+
+  # coordinates, exposition, elevation, etc.)
+  n_meta <- sum(is.na(data[[trait_id_col]]))
+  if (n_meta > 0) {
+    cli::cli_inform("Dropping {n_meta} metadata/covariate row{?s} (TraitID is NA).")
+    data <- data |> dplyr::filter(!is.na(.data[[trait_id_col]]))
+  }
+
   if (is.null(qualitative_ids) || length(qualitative_ids) == 0) {
     cli::cli_inform("No qualitative trait IDs specified. All traits treated as quantitative.")
     return(list(

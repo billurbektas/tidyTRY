@@ -54,8 +54,26 @@ test_that("split_traits with no qualitative IDs returns all as quantitative", {
   data <- read_try(f)
 
   result <- split_traits(data)
-  expect_equal(nrow(result$quantitative), nrow(data))
+  # Metadata rows (TraitID = NA) are dropped, so fewer rows than input
+  n_traits <- sum(!is.na(data$TraitID))
+  expect_equal(nrow(result$quantitative), n_traits)
   expect_equal(nrow(result$qualitative), 0)
+  # No NA TraitIDs in output
+  expect_false(any(is.na(result$quantitative$TraitID)))
+})
+
+test_that("split_traits drops metadata rows (NA TraitID)", {
+  f <- test_path("fixtures", "sample_try.txt")
+  data <- read_try(f)
+  data <- remove_experiments(data)
+
+  # Fixture has metadata rows (Latitude DataID=59, Longitude DataID=60)
+  expect_true(any(is.na(data$TraitID)))
+
+  result <- split_traits(data, qualitative_ids = c(341))
+  # No NA TraitIDs in either output
+  expect_false(any(is.na(result$quantitative$TraitID)))
+  expect_false(any(is.na(result$qualitative$TraitID)))
 })
 
 test_that("clean_quantitative filters by ErrorRisk", {
