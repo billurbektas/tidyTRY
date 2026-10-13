@@ -55,3 +55,17 @@ test_that("default_trait_map loads the shipped mapping", {
 test_that("trait_map errors with no arguments", {
   expect_error(trait_map(), "at least one mapping")
 })
+
+test_that("rename_traits warns and preserves unmapped measurements by default", {
+  df <- tibble::tibble(
+    TraitName = c("SLA definition A", "SLA definition B", "Seed mass"),
+    StdValue = c(10, 20, 3),
+    UnitName = c("mm2/mg", "mm2/mg", "mg")
+  )
+  m <- trait_map(SLA = c("SLA definition A", "SLA definition B"))
+
+  expect_warning(result <- rename_traits(df, m), "not in the map")
+  expect_equal(result$TraitName, c("SLA", "SLA", "Seed mass"))
+  expect_equal(result$StdValue, df$StdValue)
+  expect_equal(result$UnitName, df$UnitName)
+})

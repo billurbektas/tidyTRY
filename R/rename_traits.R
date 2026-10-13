@@ -174,7 +174,7 @@ rename_traits <- function(data, map, trait_col = "TraitName", warn_unmapped = TR
   if (warn_unmapped && length(unmapped) > 0) {
     cli::cli_warn(c(
       "{length(unmapped)} trait name{?s} not in the map (kept as-is):",
-      set_names(unmapped, rep("*", length(unmapped)))
+      stats::setNames(unmapped, rep("*", length(unmapped)))
     ))
   }
 
