@@ -126,3 +126,45 @@ test_that("a candidate whose submitted name matches no input is dropped", {
   expect_equal(sel$accepted_name, "Papaver rhoeas")
   expect_false(sel$needs_review)
 })
+
+tnrs_rows <- function(...) {
+  d <- data.frame(..., stringsAsFactors = FALSE)
+  d$Source <- if (is.null(d$Source)) "wcvp" else d$Source
+  d
+}
+
+test_that("a candidate of an unrelated name with a perfect name score is dropped", {
+  r <- tnrs_rows(
+    ID = c(1L, 1L), Name_submitted = "Bromus tectorum",
+    Name_matched = c("Bromus tectorum", "Veronica serpyllifolia"),
+    Name_score = c(1, 1), Overall_score = c(1, 0.9),
+    Taxonomic_status = "Accepted", Accepted_name = c("Bromus tectorum", "Veronica serpyllifolia")
+  )
+  expect_warning(sel <- tidyTRY:::.select_tnrs(r, "Bromus tectorum"), "unrelated name")
+  expect_equal(sel$accepted_name, "Bromus tectorum")
+  expect_equal(sel$n_legitimate, 1L)
+})
+
+test_that("a fuzzy match into another genus is never chosen", {
+  r <- tnrs_rows(
+    ID = 1L, Name_submitted = "Carex lehmanii", Name_matched = "Carum lemmonii",
+    Name_score = 0.61, Overall_score = 0.61,
+    Taxonomic_status = "Synonym", Accepted_name = "Perideridia lemmonii"
+  )
+  sel <- tidyTRY:::.select_tnrs(r, "Carex lehmanii")
+  expect_true(is.na(sel$accepted_name))
+  expect_true(sel$needs_review)
+  expect_match(sel$review_reason, "only matches in another genus: Carum lemmonii")
+})
+
+test_that("a fuzzy match below min_score is returned but flagged", {
+  r <- tnrs_rows(
+    ID = 1L, Name_submitted = "Carex lehmanii", Name_matched = "Carex lehmannii",
+    Name_score = 0.85, Overall_score = 0.85,
+    Taxonomic_status = "Accepted", Accepted_name = "Carex lehmannii"
+  )
+  sel <- tidyTRY:::.select_tnrs(r, "Carex lehmanii")
+  expect_equal(sel$accepted_name, "Carex lehmannii")
+  expect_true(sel$needs_review)
+  expect_match(sel$review_reason, "fuzzy match \\(score 0.85\\)")
+})

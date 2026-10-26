@@ -52,8 +52,13 @@
 #' 3. the first source in `sources` (WCVP before WFO by default);
 #' 4. `"Accepted"` before `"Synonym"`.
 #'
-#' If more than one accepted name is still tied, or no legitimate candidate
-#' exists, `accepted_name` is `NA` and `needs_review` is `TRUE`. Before
+#' A fuzzy match into another genus (e.g. "Carex lehmanii" matched to
+#' *Carum lemmonii*) is never chosen. If more than one accepted name is still
+#' tied, or no legitimate candidate exists, `accepted_name` is `NA` and
+#' `needs_review` is `TRUE`. A name from the fallback source, or matched with
+#' a score below 0.9, is returned and flagged. Candidate rows that TNRS
+#' returns for an unrelated name (another genus with a perfect name score)
+#' are dropped with a warning. Before
 #' version 0.2.0 the TNRS "best" match was used as returned. For names with
 #' homonyms that match can be an illegitimate name: "Festuca pratensis"
 #' resolved to *Festuca ovina* instead of *Lolium pratense*.
@@ -150,9 +155,11 @@ resolve_species <- function(species,
 #   3. the earliest source in `sources` (Source can read "wcvp,wfo");
 #   4. "Accepted" before "Synonym".
 # If more than one accepted name is still tied, or no legitimate candidate
-# exists, accepted_name is NA and needs_review is TRUE. A name taken from a
-# source other than the first in `sources` is returned but flagged.
-.select_tnrs <- function(res, species, sources = c("wcvp", "wfo")) {
+# exists, accepted_name is NA and needs_review is TRUE. A match into another
+# genus is never chosen. A name taken from a source other than the first in
+# `sources`, or matched with a score below `min_score`, is returned but
+# flagged.
+.select_tnrs <- function(res, species, sources = c("wcvp", "wfo"), min_score = 0.9) {
   needed <- c("ID", "Name_submitted", "Name_matched", "Taxonomic_status",
               "Accepted_name", "Overall_score", "Source")
   missing_cols <- setdiff(needed, names(res))
@@ -182,6 +189,24 @@ resolve_species <- function(species,
     id <- id[!is.na(id)]
   }
   res$ID <- id
+
+  # The service has also been seen to return another name's candidate under
+  # the right ID and submitted name: Name_matched is then an unrelated name
+  # in another genus, yet Name_score is 1 (Bromus tectorum -> Veronica
+  # serpyllifolia). A true match cannot be both, so such rows are dropped.
+  genus <- function(x) tolower(sub("\\s.*$", "", trimws(as.character(x))))
+  other_genus <- !is.na(res$Name_matched) & nzchar(res$Name_matched) &
+    genus(res$Name_matched) != genus(res$Name_submitted)
+  name_score <- if ("Name_score" %in% names(res)) suppressWarnings(as.numeric(res$Name_score)) else rep(NA_real_, nrow(res))
+  corrupted <- other_genus & !is.na(name_score) & name_score >= 1
+  if (any(corrupted)) {
+    cli::cli_warn(c(
+      "TNRS returned {sum(corrupted)} candidate row{?s} of an unrelated name (another genus with a perfect name score); dropped.",
+      "i" = "Affected: {.val {unique(res$Name_submitted[corrupted])}}."
+    ))
+    res <- res[!corrupted, , drop = FALSE]
+    other_genus <- other_genus[!corrupted]
+  }
   opt <- function(col) if (col %in% names(res)) as.character(res[[col]]) else rep(NA_character_, nrow(res))
 
   cand <- tibble::tibble(
@@ -194,7 +219,8 @@ resolve_species <- function(species,
     accepted_family = dplyr::na_if(trimws(opt("Accepted_family")), ""),
     source = as.character(res$Source),
     score = suppressWarnings(as.numeric(res$Overall_score)),
-    tnrs_warning = dplyr::na_if(trimws(opt("WarningsEng")), "")
+    tnrs_warning = dplyr::na_if(trimws(opt("WarningsEng")), ""),
+    other_genus = other_genus
   )
   cand$source_rank <- vapply(strsplit(cand$source, ",", fixed = TRUE), function(s) {
     r <- match(trimws(s), sources)
@@ -203,10 +229,15 @@ resolve_species <- function(species,
   cand$status_rank <- match(cand$taxonomic_status, c("Accepted", "Synonym"))
   cand$legitimate <- !is.na(cand$status_rank) & !is.na(cand$accepted_name) &
     !is.na(cand$source_rank)
+  # a fuzzy match into another genus is a different plant until shown
+  # otherwise (Carex lehmanii -> Carum lemmonii); it is never chosen
+  # automatically
+  cand$automatic <- cand$legitimate & !cand$other_genus
 
   pick_one <- function(id) {
     all_c <- cand[cand$id == id, , drop = FALSE]
-    legit <- all_c[all_c$legitimate, , drop = FALSE]
+    legit <- all_c[all_c$automatic, , drop = FALSE]
+    elsewhere <- all_c[all_c$legitimate & all_c$other_genus, , drop = FALSE]
     base <- tibble::tibble(
       submitted_name = species[id], accepted_name = NA_character_,
       matched_name = if (nrow(all_c)) all_c$matched_name[1] else NA_character_,
@@ -218,7 +249,9 @@ resolve_species <- function(species,
       needs_review = TRUE, review_reason = NA_character_
     )
     if (!nrow(legit)) {
-      base$review_reason <- if (nrow(all_c)) "no legitimate candidate" else "no match"
+      base$review_reason <- if (nrow(elsewhere)) {
+        paste("only matches in another genus:", paste(sort(unique(elsewhere$matched_name)), collapse = " | "))
+      } else if (nrow(all_c)) "no legitimate candidate" else "no match"
       return(base)
     }
     top <- legit[legit$score == max(legit$score, na.rm = TRUE), , drop = FALSE]
@@ -238,8 +271,10 @@ resolve_species <- function(species,
     base$accepted_author <- chosen$accepted_author
     base$accepted_species <- chosen$accepted_species
     base$accepted_family <- chosen$accepted_family
-    base$needs_review <- chosen$source_rank > 1L
-    base$review_reason <- if (base$needs_review) paste("fallback source", base$source) else NA_character_
+    reasons <- c(if (chosen$source_rank > 1L) paste("fallback source", base$source),
+                 if (!is.na(chosen$score) && chosen$score < min_score) sprintf("fuzzy match (score %.2f)", chosen$score))
+    base$needs_review <- length(reasons) > 0
+    base$review_reason <- if (length(reasons)) paste(reasons, collapse = "; ") else NA_character_
     base
   }
 

@@ -10,6 +10,20 @@
   name are dropped, and a warning gives both counts. Results of 0.2.0 can be
   wrong for any name affected this way; re-run `resolve_species()`.
 
+* The service also returns, in about one name per thousand and a different
+  name in every call, another name's candidates under the right ID and
+  submitted name (e.g. "Bromus tectorum" with candidates of *Veronica
+  serpyllifolia*; "Crepis conyzifolia" with *Saxifraga bryoides*). Such
+  rows match a name in another genus with a perfect name score, which a
+  true match cannot do; they are now dropped with a warning.
+
+* A fuzzy match into another genus is no longer chosen: "Carex lehmanii"
+  matched *Carum lemmonii* (score 0.61) and would have resolved to
+  *Perideridia lemmonii*; "Arctous alpinus" matched *Arctium alpinum*. Such
+  names are returned as `NA` with `needs_review = TRUE` and the review reason
+  "only matches in another genus". A match with an overall score below 0.9
+  is returned but flagged ("fuzzy match").
+
 # tidyTRY 0.2.0
 
 This release corrects two errors that changed results. Re-run any analysis

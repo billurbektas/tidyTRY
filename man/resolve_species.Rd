@@ -74,8 +74,13 @@ requires an internet connection. All candidate matches are requested
 \item \code{"Accepted"} before \code{"Synonym"}.
 }
 
-If more than one accepted name is still tied, or no legitimate candidate
-exists, \code{accepted_name} is \code{NA} and \code{needs_review} is \code{TRUE}. Before
+A fuzzy match into another genus (e.g. "Carex lehmanii" matched to
+\emph{Carum lemmonii}) is never chosen. If more than one accepted name is still
+tied, or no legitimate candidate exists, \code{accepted_name} is \code{NA} and
+\code{needs_review} is \code{TRUE}. A name from the fallback source, or matched with
+a score below 0.9, is returned and flagged. Candidate rows that TNRS
+returns for an unrelated name (another genus with a perfect name score)
+are dropped with a warning. Before
 version 0.2.0 the TNRS "best" match was used as returned. For names with
 homonyms that match can be an illegitimate name: "Festuca pratensis"
 resolved to \emph{Festuca ovina} instead of \emph{Lolium pratense}.
