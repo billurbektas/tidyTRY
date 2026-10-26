@@ -7,7 +7,9 @@
   reported as a tie and left unresolved; a repeated call returned the
   correct IDs). Each candidate is now checked against its `Name_submitted`;
   rows under a wrong ID are reassigned by name, rows matching no submitted
-  name are dropped, and a warning gives both counts. Results of 0.2.0 can be
+  name are dropped, and a warning gives both counts. Names are compared on
+  their letters and digits after transliteration, because TNRS rewrites the
+  submitted string (commas become spaces, accented letters plain ones). Results of 0.2.0 can be
   wrong for any name affected this way; re-run `resolve_species()`.
 
 * The service also returns, in about one name per thousand and a different

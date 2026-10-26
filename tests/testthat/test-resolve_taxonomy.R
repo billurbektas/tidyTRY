@@ -185,3 +185,16 @@ test_that("names returned without candidates are submitted again", {
   expect_equal(calls, 2L)
   expect_equal(res$accepted_name, c("Papaver rhoeas", "Festuca pratensis"))
 })
+
+test_that("TNRS's rewriting of commas and accents does not separate a candidate from its name", {
+  sent <- c("Atriplex confertifolia (Torr. & Frém.) S. Watson", "Agrostis hyemalis (Walter) Britton, Sterns & Poggenb.")
+  r <- data.frame(
+    ID = 1:2, Name_submitted = c("Atriplex confertifolia (Torr. & Frem.) S. Watson",
+                                 "Agrostis hyemalis (Walter) Britton  Sterns & Poggenb."),
+    Name_matched = c("Atriplex confertifolia", "Agrostis hyemalis"), Name_score = 1, Overall_score = 1,
+    Taxonomic_status = "Accepted", Accepted_name = c("Atriplex confertifolia", "Agrostis hyemalis"),
+    Source = "wcvp", stringsAsFactors = FALSE
+  )
+  expect_no_warning(sel <- tidyTRY:::.select_tnrs(r, sent))
+  expect_equal(sel$accepted_name, c("Atriplex confertifolia", "Agrostis hyemalis"))
+})

@@ -191,7 +191,15 @@ resolve_species <- function(species,
   # (Hypochaeris maculata under the ID of Euphorbia pekinensis, Oct 2026), so
   # the ID is checked against Name_submitted and corrected by name; a row
   # whose submitted name matches no input name is dropped.
-  norm <- function(x) tolower(gsub("\\s+", " ", trimws(as.character(x))))
+  # TNRS rewrites the submitted string: commas become spaces and accented
+  # letters plain ones ("Torr. & Frém." -> "Torr. & Frem."), so names are
+  # compared on their letters and digits only
+  norm <- function(x) {
+    x <- as.character(x)
+    ascii <- iconv(x, to = "ASCII//TRANSLIT", sub = "")
+    ascii[is.na(ascii)] <- x[is.na(ascii)]
+    tolower(gsub("[^[:alnum:]]", "", ascii))
+  }
   id <- as.integer(res$ID)
   by_name <- match(norm(res$Name_submitted), norm(species))
   wrong <- is.na(id) | id < 1L | id > length(species) | norm(species[id]) != norm(res$Name_submitted)
