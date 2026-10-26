@@ -1,10 +1,12 @@
 #' Resolve species names
 #'
 #' Harmonizes species names using a taxonomic backbone. Supports two backends:
-#' TNRS (online, uses WCVP + WFO) and WorldFlora (offline after one-time
-#' backbone download).
+#' TNRS (online; WCVP first, WFO as fallback) and WorldFlora (offline after a
+#' one-time backbone download).
 #'
-#' @param species Character vector of species names to resolve.
+#' @param species Character vector of species names to resolve. Author
+#'   strings may be included ("Agrostis alpina Scop."); TNRS uses them to tell
+#'   homonyms apart.
 #' @param method Taxonomy resolution method. One of `"tnrs"` (default,
 #'   requires internet) or `"worldflora"` (offline, requires backbone file).
 #' @param wfo_backbone Path to the World Flora Online backbone file. Only used
@@ -12,34 +14,66 @@
 #'   `getOption("tidyTRY.wfo_backbone")`.
 #' @param fuzzy Logical. Enable fuzzy matching? Defaults to `TRUE`. Only
 #'   relevant for the WorldFlora backend.
-#' @param ... Additional arguments passed to the underlying resolution function.
+#' @param ... Additional arguments passed to the backend. For TNRS:
+#'   `sources` (default `c("wcvp", "wfo")`, in order of priority) and
+#'   `batch_size` (default 5000), plus any argument of [TNRS::TNRS()] except
+#'   `matches`, which is always `"all"`.
 #'
-#' @return A tibble with standardized columns:
+#' @return A tibble with one row per unique submitted name:
 #'   \describe{
-#'     \item{submitted_name}{The original name submitted for resolution.}
-#'     \item{accepted_name}{The accepted/resolved taxonomic name.}
-#'     \item{matched_name}{The name that was matched in the database.}
-#'     \item{source}{The taxonomic source used for matching.}
+#'     \item{submitted_name}{The name submitted for resolution.}
+#'     \item{accepted_name}{The accepted name, or `NA` when no single
+#'       legitimate name could be chosen (see `needs_review`).}
+#'     \item{matched_name}{The name matched in the backbone.}
+#'     \item{source}{The backbone the accepted name was taken from.}
 #'     \item{score}{Match quality score (interpretation depends on backend).}
+#'     \item{taxonomic_status}{Status of the matched name: `"Accepted"` or
+#'       `"Synonym"`.}
+#'     \item{accepted_author, accepted_species, accepted_family}{Author,
+#'       species-rank name and family of the accepted name.}
+#'     \item{n_legitimate}{Number of distinct accepted names among the
+#'       legitimate candidates.}
+#'     \item{tnrs_warning}{TNRS warnings, e.g. `"[Ambiguous]"` for homonyms.}
+#'     \item{needs_review}{`TRUE` when the name must be checked by hand: no
+#'       legitimate candidate, a tie between accepted names, or a name taken
+#'       from a fallback source.}
+#'     \item{review_reason}{Why `needs_review` is `TRUE`.}
 #'   }
 #'
 #' @details
 #' ## TNRS backend
-#' Uses the [TNRS](https://tnrs.biendata.org/) API via the `TNRS` R package.
-#' Requires an internet connection. Handles batches of up to 5,000 names
-#' automatically.
+#' Uses the [TNRS](https://tnrs.biendata.org/) API via the `TNRS` R package and
+#' requires an internet connection. All candidate matches are requested
+#' (`matches = "all"`), and one is chosen as follows:
+#' 1. only legitimate candidates are considered: taxonomic status
+#'    `"Accepted"` or `"Synonym"` with a non-empty accepted name;
+#'    `"Illegitimate"`, `"Invalid"` and `"No opinion"` records are never used;
+#' 2. the highest overall score;
+#' 3. the first source in `sources` (WCVP before WFO by default);
+#' 4. `"Accepted"` before `"Synonym"`.
+#'
+#' If more than one accepted name is still tied, or no legitimate candidate
+#' exists, `accepted_name` is `NA` and `needs_review` is `TRUE`. Before
+#' version 0.2.0 the TNRS "best" match was used as returned. For names with
+#' homonyms that match can be an illegitimate name: "Festuca pratensis"
+#' resolved to *Festuca ovina* instead of *Lolium pratense*.
+#'
+#' An error is raised if TNRS returns nothing (e.g. offline), instead of
+#' returning an empty result.
 #'
 #' ## WorldFlora backend
 #' Uses the `WorldFlora` R package with a locally stored WFO backbone file.
 #' Download the backbone once from <https://www.worldfloraonline.org/downloadData>
 #' (the "classification" file). After downloading, all matching is fully offline.
+#' The single best match is chosen by [WorldFlora::WFO.one()].
 #'
 #' @export
 #'
 #' @examples
 #' \dontrun{
 #' # Using TNRS (online)
-#' resolved <- resolve_species(c("Papaver rhoeas", "Centaurea cyanus"))
+#' resolved <- resolve_species(c("Papaver rhoeas", "Festuca pratensis"))
+#' resolved[resolved$needs_review, ]
 #'
 #' # Using WorldFlora (offline)
 #' resolved <- resolve_species(
@@ -69,9 +103,10 @@ resolve_species <- function(species,
     worldflora = .resolve_worldflora(species, wfo_backbone = wfo_backbone, fuzzy = fuzzy, ...)
   )
 
-  n_resolved <- sum(!is.na(result$accepted_name) & result$accepted_name != "")
+  n_resolved <- sum(!is.na(result$accepted_name))
+  n_review <- sum(result$needs_review)
   cli::cli_inform(
-    "Resolved {n_resolved}/{length(species)} name{?s}."
+    "Resolved {n_resolved}/{length(species)} name{?s}; {n_review} need{?s/} review."
   )
 
   result
@@ -79,18 +114,115 @@ resolve_species <- function(species,
 
 
 # Internal: TNRS backend
-.resolve_tnrs <- function(species, ...) {
+#
+# TNRS's own "best" match is the candidate ranked first by Overall_score. For
+# names with homonyms every candidate scores 1, and an Illegitimate or Invalid
+# homonym can be ranked first (e.g. "Festuca pratensis" -> Festuca ovina, an
+# illegitimate later homonym, instead of Lolium pratense). So all candidates
+# are requested and the choice is made here, from legitimate names only.
+.resolve_tnrs <- function(species, sources = c("wcvp", "wfo"), batch_size = 5000L, ...) {
   rlang::check_installed("TNRS", reason = "to use the TNRS taxonomy backend")
 
-  res <- TNRS::TNRS(species, ...)
+  batches <- split(seq_along(species), ceiling(seq_along(species) / batch_size))
+  res <- purrr::map(batches, function(idx) {
+    out <- TNRS::TNRS(species[idx], sources = sources, matches = "all", ...)
+    if (is.null(out) || !nrow(out)) {
+      cli::cli_abort(c(
+        "TNRS returned no result.",
+        "i" = "Check the internet connection and the TNRS service; nothing was resolved."
+      ))
+    }
+    # TNRS numbers the submitted names 1..n within a call
+    out$ID <- idx[as.integer(out$ID)]
+    out
+  })
+  .select_tnrs(dplyr::bind_rows(res), species, sources = sources)
+}
 
-  tibble::tibble(
-    submitted_name = res$Name_submitted,
-    accepted_name = res$Accepted_name,
-    matched_name = res$Name_matched,
-    source = res$Source,
-    score = res$Overall_score
+
+# Internal: choose one accepted name per submitted name from TNRS candidates
+# (TNRS::TNRS(..., matches = "all") output).
+#
+# Rules, in order:
+#   1. only legitimate candidates: Taxonomic_status "Accepted" or "Synonym",
+#      with a non-empty Accepted_name;
+#   2. highest Overall_score;
+#   3. the earliest source in `sources` (Source can read "wcvp,wfo");
+#   4. "Accepted" before "Synonym".
+# If more than one accepted name is still tied, or no legitimate candidate
+# exists, accepted_name is NA and needs_review is TRUE. A name taken from a
+# source other than the first in `sources` is returned but flagged.
+.select_tnrs <- function(res, species, sources = c("wcvp", "wfo")) {
+  needed <- c("ID", "Name_matched", "Taxonomic_status", "Accepted_name",
+              "Overall_score", "Source")
+  missing_cols <- setdiff(needed, names(res))
+  if (length(missing_cols)) {
+    cli::cli_abort("TNRS output lacks column{?s} {.val {missing_cols}}.")
+  }
+  opt <- function(col) if (col %in% names(res)) as.character(res[[col]]) else rep(NA_character_, nrow(res))
+
+  cand <- tibble::tibble(
+    id = as.integer(res$ID),
+    matched_name = as.character(res$Name_matched),
+    taxonomic_status = as.character(res$Taxonomic_status),
+    accepted_name = dplyr::na_if(trimws(as.character(res$Accepted_name)), ""),
+    accepted_author = dplyr::na_if(trimws(opt("Accepted_name_author")), ""),
+    accepted_species = dplyr::na_if(trimws(opt("Accepted_species")), ""),
+    accepted_family = dplyr::na_if(trimws(opt("Accepted_family")), ""),
+    source = as.character(res$Source),
+    score = suppressWarnings(as.numeric(res$Overall_score)),
+    tnrs_warning = dplyr::na_if(trimws(opt("WarningsEng")), "")
   )
+  cand$source_rank <- vapply(strsplit(cand$source, ",", fixed = TRUE), function(s) {
+    r <- match(trimws(s), sources)
+    if (all(is.na(r))) NA_integer_ else min(r, na.rm = TRUE)
+  }, integer(1))
+  cand$status_rank <- match(cand$taxonomic_status, c("Accepted", "Synonym"))
+  cand$legitimate <- !is.na(cand$status_rank) & !is.na(cand$accepted_name) &
+    !is.na(cand$source_rank)
+
+  pick_one <- function(id) {
+    all_c <- cand[cand$id == id, , drop = FALSE]
+    legit <- all_c[all_c$legitimate, , drop = FALSE]
+    base <- tibble::tibble(
+      submitted_name = species[id], accepted_name = NA_character_,
+      matched_name = if (nrow(all_c)) all_c$matched_name[1] else NA_character_,
+      source = NA_character_, score = NA_real_, taxonomic_status = NA_character_,
+      accepted_author = NA_character_, accepted_species = NA_character_,
+      accepted_family = NA_character_,
+      n_legitimate = length(unique(legit$accepted_name)),
+      tnrs_warning = paste(unique(stats::na.omit(all_c$tnrs_warning)), collapse = " "),
+      needs_review = TRUE, review_reason = NA_character_
+    )
+    if (!nrow(legit)) {
+      base$review_reason <- if (nrow(all_c)) "no legitimate candidate" else "no match"
+      return(base)
+    }
+    top <- legit[legit$score == max(legit$score, na.rm = TRUE), , drop = FALSE]
+    top <- top[top$source_rank == min(top$source_rank), , drop = FALSE]
+    top <- top[top$status_rank == min(top$status_rank), , drop = FALSE]
+    names_left <- unique(top$accepted_name)
+    if (length(names_left) > 1) {
+      base$review_reason <- paste("tie:", paste(sort(names_left), collapse = " | "))
+      return(base)
+    }
+    chosen <- top[1, ]
+    base$accepted_name <- chosen$accepted_name
+    base$matched_name <- chosen$matched_name
+    base$source <- sources[chosen$source_rank]
+    base$score <- chosen$score
+    base$taxonomic_status <- chosen$taxonomic_status
+    base$accepted_author <- chosen$accepted_author
+    base$accepted_species <- chosen$accepted_species
+    base$accepted_family <- chosen$accepted_family
+    base$needs_review <- chosen$source_rank > 1L
+    base$review_reason <- if (base$needs_review) paste("fallback source", base$source) else NA_character_
+    base
+  }
+
+  out <- dplyr::bind_rows(lapply(seq_along(species), pick_one))
+  out$tnrs_warning <- dplyr::na_if(out$tnrs_warning, "")
+  out
 }
 
 
@@ -122,15 +254,24 @@ resolve_species <- function(species,
   # single match per species, prioritizing "Accepted" status.
   res <- WorldFlora::WFO.one(res, verbose = FALSE)
 
+  accepted <- dplyr::na_if(trimws(res$scientificName), "")
   tibble::tibble(
     submitted_name = res$spec.name,
-    accepted_name = res$scientificName,
+    accepted_name = accepted,
     matched_name = ifelse(
       res$New.accepted & res$Old.name != "",
       res$Old.name,
       res$scientificName
     ),
     source = "WFO",
-    score = ifelse(res$Fuzzy, res$Fuzzy.dist, 0)
+    score = ifelse(res$Fuzzy, res$Fuzzy.dist, 0),
+    taxonomic_status = if ("taxonomicStatus" %in% names(res)) res$taxonomicStatus else NA_character_,
+    accepted_author = if ("scientificNameAuthorship" %in% names(res)) res$scientificNameAuthorship else NA_character_,
+    accepted_species = NA_character_,
+    accepted_family = if ("family" %in% names(res)) res$family else NA_character_,
+    n_legitimate = NA_integer_,
+    tnrs_warning = NA_character_,
+    needs_review = is.na(accepted),
+    review_reason = ifelse(is.na(accepted), "no match", NA_character_)
   )
 }

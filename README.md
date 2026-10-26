@@ -1,5 +1,9 @@
 # tidyTRY
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/billurbektas/tidyTRY/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/billurbektas/tidyTRY/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
 An R package for reading, cleaning, and processing plant trait data from the [TRY database](https://www.try-db.org/).
 
 ## Why?
@@ -9,9 +13,9 @@ TRY data exports are large (often 1-10+ GB), messy, and require substantial clea
 ## Features
 
 - **Memory-efficient reading** of large TRY files using chunked processing
-- **Species filtering** at read time (critical for multi-GB files)
-- **Taxonomy resolution** via TNRS (online) or WorldFlora (offline)
-- **Experiment removal** (via DataID 327, per TRY 6.0 spec)
+- **Species filtering** at read time, by name or by TRY species ID (critical for multi-GB files)
+- **Taxonomy resolution** via TNRS (online; legitimate names only, ties flagged for review) or WorldFlora (offline)
+- **Experiment removal** per observation, from TRY's treatment fields (DataID 327 and the other "Treatment" fields)
 - **Duplicate removal** (via OrigObsDataID flagging)
 - **Trait type splitting** (quantitative vs qualitative)
 - **Error risk filtering** for quantitative trait quality control
@@ -85,14 +89,41 @@ my_species <- c(
 dat <- read_try("data/try/", species = my_species)
 ```
 
-### Step 2: Resolve Taxonomy
+#### Reading by TRY species ID
 
-Species names in TRY may not match current accepted taxonomy. Use `resolve_species()` to harmonize names. Two backends are supported:
+Filtering by name keeps rows whose `SpeciesName` or `AccSpeciesName` equals one
+of your names. TRY's `AccSpeciesName` is TRY's own accepted name and can merge
+species: records submitted as *Festuca pratensis* are filed under "Festuca
+ovina". The safer route resolves the TRY names first, reads by TRY species ID,
+and then keeps the rows whose own name resolves to one of your taxa
+(`process_try()` does this for you):
 
 ```r
-# Online via TNRS (default) - uses WCVP + WFO
+try_names <- try_species_names("data/try/")
+taxonomy <- resolve_species(c(my_species, try_names$SpeciesName, try_names$AccSpeciesName))
+study <- taxonomy$accepted_name[taxonomy$submitted_name %in% my_species]
+lookup <- setNames(taxonomy$accepted_name, taxonomy$submitted_name)
+ids <- unique(try_names$AccSpeciesID[lookup[try_names$SpeciesName] %in% study |
+                                     lookup[try_names$AccSpeciesName] %in% study])
+dat <- read_try("data/try/", species_ids = ids)
+dat <- assign_accepted_names(dat, taxonomy)
+dat <- dat[dat$accepted_name %in% study, ]
+```
+
+### Step 2: Resolve Taxonomy
+
+Species names in TRY may not match current accepted taxonomy. Use `resolve_species()` to harmonize names. Two backends are supported.
+
+With TNRS, all candidate matches are requested and only legitimate names (status "Accepted" or "Synonym") are used. For a name with homonyms, TNRS's own "best" match can be an illegitimate name by another author: before version 0.2.0, "Festuca pratensis" resolved to *Festuca ovina* instead of *Lolium pratense*. See `NEWS.md`.
+
+```r
+# Online via TNRS (default) - WCVP first, WFO as flagged fallback
 taxonomy <- resolve_species(my_species, method = "tnrs")
 taxonomy
+
+# Names that need a decision by hand: ties between legitimate names,
+# no legitimate candidate, or a name taken from the fallback source
+taxonomy[taxonomy$needs_review, c("submitted_name", "review_reason")]
 
 # Offline via WorldFlora (requires one-time backbone download)
 # Download from: https://www.worldfloraonline.org/downloadData
@@ -107,7 +138,8 @@ taxonomy <- resolve_species(my_species, method = "worldflora",
 trait_info <- get_trait_info(dat)
 trait_info
 
-# Remove experimental datasets (detected via DataID 327)
+# Remove observations made under experimental conditions (treatment fields
+# such as DataID 327 with a value other than a clearly natural one)
 dat <- remove_experiments(dat)
 
 # Remove duplicate records (flagged via OrigObsDataID)

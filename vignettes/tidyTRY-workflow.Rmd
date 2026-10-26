@@ -56,9 +56,10 @@ Species names in TRY may not match current accepted taxonomy. Use
 `resolve_species()` to harmonize names.
 
 ```{r}
-# Online via TNRS (default)
+# Online via TNRS (default): legitimate names only, WCVP first
 taxonomy <- resolve_species(my_species, method = "tnrs")
 taxonomy
+taxonomy[taxonomy$needs_review, c("submitted_name", "review_reason")]
 
 # Offline via WorldFlora (requires one-time backbone download)
 # taxonomy <- resolve_species(my_species, method = "worldflora",
@@ -72,7 +73,7 @@ taxonomy
 trait_info <- get_trait_info(dat)
 trait_info
 
-# Remove experimental datasets (detected via DataID 327)
+# Remove observations made under experimental conditions
 dat <- remove_experiments(dat)
 
 # Remove duplicate records (flagged via OrigObsDataID)

@@ -9,7 +9,10 @@
 #'
 #' @param files Character vector of file paths, or a directory containing
 #'   TRY `.txt` files.
-#' @param species Character vector of species names to filter on.
+#' @param species Character vector of species names to filter on. With
+#'   `resolve_taxonomy = TRUE`, the study names and all TRY names are
+#'   resolved together; TRY records are selected by `AccSpeciesID` and kept
+#'   when their resolved name is one of the study taxa.
 #' @param qualitative_ids Optional integer vector of TraitIDs that are
 #'   qualitative. If `NULL`, all traits are treated as quantitative.
 #' @param trait_map Optional trait name mapping (from [trait_map()],
@@ -30,7 +33,10 @@
 #'     \item{quantitative}{Cleaned quantitative trait data.}
 #'     \item{qualitative}{Qualitative trait data (empty if no qualitative IDs specified).}
 #'     \item{trait_info}{Data frame of TraitID/TraitName pairs found in the data.}
-#'     \item{taxonomy}{Species name resolution results (NULL if `resolve_taxonomy = FALSE`).}
+#'     \item{taxonomy}{Species name resolution results for the study names and
+#'       all TRY names (NULL if `resolve_taxonomy = FALSE`). Rows of the
+#'       trait tables carry `accepted_name` and `name_source` from
+#'       [assign_accepted_names()].}
 #'     \item{coordinates}{Extracted coordinates (NULL if `extract_location = FALSE`).}
 #'     \item{diagnostics}{Trait availability matrix.}
 #'     \item{units}{Data frame of trait names and their units.}
@@ -60,22 +66,36 @@ process_try <- function(files,
                         extract_location = TRUE,
                         chunk_size = 100000L,
                         ...) {
-  # Step 1: Resolve species names
+  # Step 1: Resolve the study names and the TRY names together
   taxonomy <- NULL
-  resolved_species <- species
-
   if (resolve_taxonomy) {
     cli::cli_rule("Step 1: Resolving taxonomy")
-    taxonomy <- resolve_species(species, method = resolve_method, ...)
-    resolved_species <- unique(c(
-      species,
-      taxonomy$accepted_name[!is.na(taxonomy$accepted_name)]
-    ))
+    try_names <- try_species_names(files, chunk_size = chunk_size)
+    taxonomy <- resolve_species(
+      unique(c(species, try_names$SpeciesName, try_names$AccSpeciesName)),
+      method = resolve_method, ...
+    )
+    lookup <- stats::setNames(taxonomy$accepted_name, taxonomy$submitted_name)
+    study <- unique(stats::na.omit(unname(lookup[species])))
+    # TRY species whose contributor or TRY name resolves to a study taxon.
+    # Reading by ID means a resolved name is never used as a filter.
+    hit <- unname(lookup[try_names$SpeciesName]) %in% study |
+      unname(lookup[try_names$AccSpeciesName]) %in% study
+    species_ids <- unique(try_names$AccSpeciesID[hit])
+    unresolved <- species[is.na(lookup[species])]
+    if (length(unresolved)) {
+      cli::cli_inform("{length(unresolved)} study name{?s} not resolved; matched by exact name instead.")
+    }
   }
 
   # Step 2: Read and filter data
   cli::cli_rule("Step 2: Reading TRY data")
-  data <- read_try(files, species = resolved_species, chunk_size = chunk_size)
+  if (resolve_taxonomy) {
+    data <- read_try(files, species = if (length(unresolved)) unresolved else NULL,
+                     species_ids = species_ids, chunk_size = chunk_size)
+  } else {
+    data <- read_try(files, species = species, chunk_size = chunk_size)
+  }
 
   # Fix ALL-CAPS species names (TRY quirk for hyphenated epithets)
   n_caps <- sum(grepl("^[A-Z][A-Z]", data$AccSpeciesName), na.rm = TRUE)
@@ -84,12 +104,21 @@ process_try <- function(files,
     data$AccSpeciesName <- fix_species_case(data$AccSpeciesName)
   }
 
+  if (resolve_taxonomy) {
+    # An ID can hold several species; keep only the rows of study taxa
+    data <- assign_accepted_names(data, taxonomy)
+    keep <- data$accepted_name %in% study |
+      data$SpeciesName %in% unresolved | data$AccSpeciesName %in% unresolved
+    cli::cli_inform("Keeping {sum(keep)} of {nrow(data)} row{?s} that belong to the study taxa.")
+    data <- data[keep, , drop = FALSE]
+  }
+
   # Step 3: Get trait info
   cli::cli_rule("Step 3: Inspecting traits")
   trait_info <- get_trait_info(data)
 
   # Step 4: Remove experiments
-  cli::cli_rule("Step 4: Removing experimental datasets")
+  cli::cli_rule("Step 4: Removing experimental observations")
   data <- remove_experiments(data)
 
   # Step 4b: Remove duplicates

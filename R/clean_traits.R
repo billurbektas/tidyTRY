@@ -22,54 +22,118 @@ get_trait_info <- function(data, trait_id_col = "TraitID", trait_name_col = "Tra
 }
 
 
-#' Remove experimental datasets
+#' Remove experimental observations
 #'
-#' Identifies datasets that contain treatment/experimental data and removes
-#' all observations from those datasets. Per the TRY 6.0 Release Notes,
-#' experimental conditions are flagged via DataID 327 ("Exposition"). Falls
-#' back to matching `DataName == "Treatment"` for compatibility with older
-#' exports.
+#' Removes TRY observations made under experimental conditions. TRY records
+#' growing conditions in "treatment" fields: DataID 327 ("Treatment:
+#' Exposition") and further fields whose `DataName` starts with "Treatment"
+#' (light, nutrient supply, CO2, temperature, water supply, competition, ...)
+#' or reads "Experiment ID". An observation is kept only if every treatment
+#' field it carries has a clearly natural value (see
+#' [default_natural_values()]); any other value, including ambiguous codes
+#' and empty values, marks the observation as experimental, and all its rows
+#' are removed. Observations without any treatment field are kept.
+#'
+#' Before version 0.2.0 this function removed every *dataset* containing a
+#' DataID 327 or "Treatment" row, whatever its value. Most such rows say
+#' "none" or "natural environment", so natural observations were removed
+#' together with experimental ones. That behaviour is still available with
+#' `level = "dataset"`.
 #'
 #' @param data A data frame of TRY data.
-#' @param data_id_col Name of the DataID column. Defaults to `"DataID"`.
-#' @param data_name_col Name of the DataName column. Defaults to `"DataName"`.
-#' @param dataset_id_col Name of the DatasetID column. Defaults to `"DatasetID"`.
+#' @param level `"observation"` (default) removes the observations made under
+#'   experimental conditions; `"dataset"` reproduces the behaviour before
+#'   0.2.0 and removes whole datasets.
+#' @param natural_values Character vector of treatment values that mean
+#'   natural, untreated conditions. Compared after lower-casing, trimming,
+#'   collapsing white space and dropping trailing punctuation. Defaults to
+#'   [default_natural_values()]; extend it for the spellings in your export.
+#' @param data_id_col,data_name_col,value_col,observation_id_col,dataset_id_col
+#'   Column names in `data`.
 #'
-#' @return The input data frame with experimental datasets removed.
+#' @return The input data frame without experimental observations. The
+#'   treatment values that led to removal, with their row counts, are
+#'   attached as attribute `"experimental_values"`.
 #' @export
 remove_experiments <- function(data,
+                               level = c("observation", "dataset"),
+                               natural_values = default_natural_values(),
                                data_id_col = "DataID",
                                data_name_col = "DataName",
+                               value_col = "OrigValueStr",
+                               observation_id_col = "ObservationID",
                                dataset_id_col = "DatasetID") {
-  # Primary: DataID 327 = Exposition / experimental conditions (TRY 6.0 spec)
-  has_data_id <- data_id_col %in% names(data)
+  level <- match.arg(level)
+  is_treatment <- .is_treatment_row(data, data_id_col, data_name_col)
 
-  if (has_data_id) {
-    experiment_ids <- data |>
-      dplyr::filter(.data[[data_id_col]] == 327L) |>
-      dplyr::pull(.data[[dataset_id_col]]) |>
-      unique()
-  } else {
-    experiment_ids <- integer(0)
+  if (level == "dataset") {
+    experiment_ids <- unique(data[[dataset_id_col]][is_treatment])
+    if (length(experiment_ids) > 0) {
+      cli::cli_inform("Removing {length(experiment_ids)} dataset{?s} with treatment fields (DatasetID: {experiment_ids}).")
+      data <- data[!data[[dataset_id_col]] %in% experiment_ids, , drop = FALSE]
+    } else {
+      cli::cli_inform("No experimental datasets found.")
+    }
+    return(data)
   }
 
-  # Fallback: also check DataName == "Treatment" for older exports
-  experiment_ids_fallback <- data |>
-    dplyr::filter(.data[[data_name_col]] == "Treatment") |>
-    dplyr::pull(.data[[dataset_id_col]]) |>
-    unique()
+  values <- .normalize_value(data[[value_col]][is_treatment])
+  natural <- values %in% .normalize_value(natural_values)
+  experimental_obs <- unique(data[[observation_id_col]][is_treatment][!natural])
+  experimental_obs <- experimental_obs[!is.na(experimental_obs)]
 
-  experiment_ids <- unique(c(experiment_ids, experiment_ids_fallback))
+  flagged <- tibble::tibble(value = values[!natural]) |>
+    dplyr::count(.data$value, sort = TRUE, name = "n_rows")
 
-  if (length(experiment_ids) > 0) {
-    cli::cli_inform("Removing {length(experiment_ids)} experimental dataset{?s} (DatasetID: {experiment_ids}).")
-    data <- data |>
-      dplyr::filter(!.data[[dataset_id_col]] %in% experiment_ids)
+  drop <- data[[observation_id_col]] %in% experimental_obs
+  cli::cli_inform(c(
+    "Removing {length(experimental_obs)} experimental observation{?s} ({sum(drop)} row{?s}).",
+    "i" = "Treatment values counted as natural: {.val {unique(natural_values)}}."
+  ))
+  out <- data[!drop, , drop = FALSE]
+  attr(out, "experimental_values") <- flagged
+  out
+}
+
+
+#' Treatment values that mean natural conditions
+#'
+#' The values of TRY treatment fields that [remove_experiments()] treats as
+#' natural, untreated conditions by default. Only unambiguous values are
+#' included; "control", "ambient", "common garden" and codes whose meaning
+#' depends on the dataset are not, so observations carrying them are
+#' removed. Extend the vector for spelling variants in your export.
+#'
+#' @return A character vector.
+#' @export
+default_natural_values <- function() {
+  c("none", "no", "no treatment", "untreated", "natural", "natural environment",
+    "natural env", "nat env", "natural conditions", "natural vegetation",
+    "natural habitat", "natural forest environment", "natural grassland",
+    "field", "field conditions", "in situ", "wild")
+}
+
+
+# Internal: rows of TRY treatment fields (DataID 327, DataName "Treatment...",
+# "Experiment ID")
+.is_treatment_row <- function(data, data_id_col, data_name_col) {
+  by_id <- if (data_id_col %in% names(data)) {
+    !is.na(data[[data_id_col]]) & data[[data_id_col]] == 327L
   } else {
-    cli::cli_inform("No experimental datasets found.")
+    rep(FALSE, nrow(data))
   }
+  name <- data[[data_name_col]]
+  by_name <- !is.na(name) & grepl("^\\s*(treatment|experiment id)", name, ignore.case = TRUE)
+  by_id | by_name
+}
 
-  data
+
+# Internal: normalise a free-text treatment value for comparison
+.normalize_value <- function(x) {
+  x <- tolower(trimws(gsub("\\s+", " ", x)))
+  x <- sub("[[:punct:][:space:]]+$", "", x)
+  x[is.na(x)] <- ""
+  x
 }
 
 

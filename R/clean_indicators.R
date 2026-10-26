@@ -113,7 +113,7 @@ download_floraveg <- function(dataset = c("ellenberg_disturbance", "dispersal",
 #' use [download_floraveg()] first and pass the path.
 #'
 #' @references
-#' Ellenberg values: <https://doi.org/10.1111/jvs.13168>
+#' Ellenberg values: \doi{10.1111/jvs.13168}
 #'
 #' Disturbance classes: <https://onlinelibrary.wiley.com/doi/10.1111/geb.13603>
 #'

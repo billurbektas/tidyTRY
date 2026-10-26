@@ -88,3 +88,41 @@ test_that("clean_quantitative filters by ErrorRisk", {
   high_risk <- cleaned |> dplyr::filter(.data$ErrorRisk >= 4)
   expect_equal(nrow(high_risk), 0)
 })
+
+# Observation-level removal (0.2.0) -----------------------------------------
+exp_fixture <- function() {
+  tibble::tibble(
+    DatasetID = 1L,
+    ObservationID = c(1L, 1L, 2L, 2L, 3L, 3L, 4L, 4L, 5L, 5L, 6L),
+    DataID = c(3115L, 327L, 3115L, 327L, 3115L, 327L, 3115L, 319L, 3115L, 443L, 3115L),
+    DataName = c("SLA", "Treatment: Exposition", "SLA", "Treatment: Exposition",
+                 "SLA", "Treatment: Exposition", "SLA", "Treatment light",
+                 "SLA", "Canopy position: sun vers. Shade leaf qualifier", "SLA"),
+    OrigValueStr = c("20", "Natural environment.", "21", "Greenhouse",
+                     "22", "CG", "23", NA, "24", "sun", "25")
+  )
+}
+
+test_that("remove_experiments keeps natural observations of a dataset with experiments", {
+  out <- remove_experiments(exp_fixture())
+  # 1: natural; 5: canopy position is not a treatment; 6: no treatment field
+  expect_setequal(unique(out$ObservationID), c(1L, 5L, 6L))
+})
+
+test_that("remove_experiments removes ambiguous and empty treatment values", {
+  out <- remove_experiments(exp_fixture())
+  # 3: ambiguous code "CG"; 4: empty treatment value
+  expect_false(any(c(2L, 3L, 4L) %in% out$ObservationID))
+  flagged <- attr(out, "experimental_values")
+  expect_true(all(c("greenhouse", "cg", "") %in% flagged$value))
+})
+
+test_that("remove_experiments accepts extra natural spellings", {
+  out <- remove_experiments(exp_fixture(), natural_values = c(default_natural_values(), "CG"))
+  expect_true(3L %in% out$ObservationID)
+})
+
+test_that("remove_experiments level = 'dataset' reproduces the pre-0.2.0 behaviour", {
+  out <- remove_experiments(exp_fixture(), level = "dataset")
+  expect_equal(nrow(out), 0L)
+})
