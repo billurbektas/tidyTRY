@@ -153,12 +153,35 @@ resolve_species <- function(species,
 # exists, accepted_name is NA and needs_review is TRUE. A name taken from a
 # source other than the first in `sources` is returned but flagged.
 .select_tnrs <- function(res, species, sources = c("wcvp", "wfo")) {
-  needed <- c("ID", "Name_matched", "Taxonomic_status", "Accepted_name",
-              "Overall_score", "Source")
+  needed <- c("ID", "Name_submitted", "Name_matched", "Taxonomic_status",
+              "Accepted_name", "Overall_score", "Source")
   missing_cols <- setdiff(needed, names(res))
   if (length(missing_cols)) {
     cli::cli_abort("TNRS output lacks column{?s} {.val {missing_cols}}.")
   }
+
+  # A candidate belongs to the name it was submitted for. The TNRS service has
+  # been seen to return a candidate of one name under the ID of another
+  # (Hypochaeris maculata under the ID of Euphorbia pekinensis, Oct 2026), so
+  # the ID is checked against Name_submitted and corrected by name; a row
+  # whose submitted name matches no input name is dropped.
+  norm <- function(x) tolower(gsub("\\s+", " ", trimws(as.character(x))))
+  id <- as.integer(res$ID)
+  by_name <- match(norm(res$Name_submitted), norm(species))
+  wrong <- is.na(id) | id < 1L | id > length(species) | norm(species[id]) != norm(res$Name_submitted)
+  wrong[is.na(wrong)] <- TRUE
+  if (any(wrong)) {
+    n_fixed <- sum(wrong & !is.na(by_name))
+    n_dropped <- sum(wrong & is.na(by_name))
+    cli::cli_warn(c(
+      "TNRS returned {sum(wrong)} candidate row{?s} under the ID of another name.",
+      "i" = "{n_fixed} reassigned by submitted name, {n_dropped} dropped."
+    ))
+    id[wrong] <- by_name[wrong]
+    res <- res[!is.na(id), , drop = FALSE]
+    id <- id[!is.na(id)]
+  }
+  res$ID <- id
   opt <- function(col) if (col %in% names(res)) as.character(res[[col]]) else rep(NA_character_, nrow(res))
 
   cand <- tibble::tibble(

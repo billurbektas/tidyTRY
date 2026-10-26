@@ -1,3 +1,15 @@
+# tidyTRY 0.2.1
+
+* `resolve_species(method = "tnrs")` no longer trusts TNRS's `ID` column
+  alone. The TNRS service was seen to return a candidate of one name under
+  the ID of another (in a batch of 1,032 names, candidates of *Hypochaeris
+  maculata* came back under the ID of *Euphorbia pekinensis*, which was then
+  reported as a tie and left unresolved; a repeated call returned the
+  correct IDs). Each candidate is now checked against its `Name_submitted`;
+  rows under a wrong ID are reassigned by name, rows matching no submitted
+  name are dropped, and a warning gives both counts. Results of 0.2.0 can be
+  wrong for any name affected this way; re-run `resolve_species()`.
+
 # tidyTRY 0.2.0
 
 This release corrects two errors that changed results. Re-run any analysis

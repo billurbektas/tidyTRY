@@ -100,3 +100,29 @@ test_that("resolve_species errors when TNRS returns nothing", {
   local_mocked_bindings(TNRS = function(...) NULL, .package = "TNRS")
   expect_error(resolve_species("Papaver rhoeas"), "TNRS returned no result")
 })
+
+test_that("a candidate returned under another name's ID is reassigned by its submitted name", {
+  r <- utils::read.csv(test_path("fixtures", "tnrs_all_matches.csv"), stringsAsFactors = FALSE)
+  species <- unique(r$Name_submitted)
+  r$ID <- match(r$Name_submitted, species)
+  # move one Agrostis alpina candidate under the ID of Papaver rhoeas
+  i <- which(r$Name_submitted == "Agrostis alpina" & r$Accepted_name == "Alpagrostis alpina")[1]
+  r$ID[i] <- match("Papaver rhoeas", species)
+  expect_warning(sel <- tidyTRY:::.select_tnrs(r, species), "under the ID of another name")
+  pick <- stats::setNames(sel$accepted_name, sel$submitted_name)
+  expect_equal(pick[["Papaver rhoeas"]], "Papaver rhoeas")
+  expect_equal(pick[["Agrostis alpina"]], "Alpagrostis alpina")
+})
+
+test_that("a candidate whose submitted name matches no input is dropped", {
+  r <- data.frame(
+    ID = c(1L, 1L), Name_submitted = c("Papaver rhoeas", "Something else"),
+    Name_matched = c("Papaver rhoeas", "Something else"),
+    Taxonomic_status = c("Accepted", "Accepted"),
+    Accepted_name = c("Papaver rhoeas", "Something else"),
+    Overall_score = c(1, 1), Source = c("wcvp", "wcvp"), stringsAsFactors = FALSE
+  )
+  expect_warning(sel <- tidyTRY:::.select_tnrs(r, "Papaver rhoeas"), "1 dropped")
+  expect_equal(sel$accepted_name, "Papaver rhoeas")
+  expect_false(sel$needs_review)
+})
