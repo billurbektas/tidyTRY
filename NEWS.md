@@ -24,6 +24,11 @@
   "only matches in another genus". A match with an overall score below 0.9
   is returned but flagged ("fuzzy match").
 
+* Names returned without any candidate are submitted again, up to `retries`
+  (default 2) more times. In a run of 33,914 names, 547 came back without
+  candidates after the faulty rows above were dropped; 299 of 300 of them
+  returned candidates on a second call.
+
 # tidyTRY 0.2.0
 
 This release corrects two errors that changed results. Re-run any analysis

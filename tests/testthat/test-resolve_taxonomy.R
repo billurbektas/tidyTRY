@@ -168,3 +168,20 @@ test_that("a fuzzy match below min_score is returned but flagged", {
   expect_true(sel$needs_review)
   expect_match(sel$review_reason, "fuzzy match \\(score 0.85\\)")
 })
+
+test_that("names returned without candidates are submitted again", {
+  skip_if_not_installed("TNRS")
+  calls <- 0L
+  fake <- function(taxonomic_names, ...) {
+    calls <<- calls + 1L
+    keep <- if (calls == 1L) taxonomic_names[taxonomic_names != "Festuca pratensis"] else taxonomic_names
+    ids <- match(keep, taxonomic_names)
+    data.frame(ID = ids, Name_submitted = keep, Name_matched = keep, Name_score = 1,
+               Overall_score = 1, Taxonomic_status = "Accepted", Accepted_name = keep,
+               Source = "wcvp", stringsAsFactors = FALSE)
+  }
+  local_mocked_bindings(TNRS = fake, .package = "TNRS")
+  res <- resolve_species(c("Papaver rhoeas", "Festuca pratensis"))
+  expect_equal(calls, 2L)
+  expect_equal(res$accepted_name, c("Papaver rhoeas", "Festuca pratensis"))
+})

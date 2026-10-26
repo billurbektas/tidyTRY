@@ -15,9 +15,11 @@
 #' @param fuzzy Logical. Enable fuzzy matching? Defaults to `TRUE`. Only
 #'   relevant for the WorldFlora backend.
 #' @param ... Additional arguments passed to the backend. For TNRS:
-#'   `sources` (default `c("wcvp", "wfo")`, in order of priority) and
-#'   `batch_size` (default 5000), plus any argument of [TNRS::TNRS()] except
-#'   `matches`, which is always `"all"`.
+#'   `sources` (default `c("wcvp", "wfo")`, in order of priority),
+#'   `batch_size` (default 5000) and `retries` (default 2: names returned
+#'   without any candidate are submitted again up to this many times), plus
+#'   any argument of [TNRS::TNRS()] except `matches`, which is always
+#'   `"all"`.
 #'
 #' @return A tibble with one row per unique submitted name:
 #'   \describe{
@@ -125,9 +127,26 @@ resolve_species <- function(species,
 # homonym can be ranked first (e.g. "Festuca pratensis" -> Festuca ovina, an
 # illegitimate later homonym, instead of Lolium pratense). So all candidates
 # are requested and the choice is made here, from legitimate names only.
-.resolve_tnrs <- function(species, sources = c("wcvp", "wfo"), batch_size = 5000L, ...) {
+.resolve_tnrs <- function(species, sources = c("wcvp", "wfo"), batch_size = 5000L,
+                          retries = 2L, ...) {
   rlang::check_installed("TNRS", reason = "to use the TNRS taxonomy backend")
+  out <- .select_tnrs(.tnrs_candidates(species, sources, batch_size, ...), species, sources = sources)
+  # Names whose candidate rows were lost to faulty responses come back with
+  # no candidates at all; most return normally when submitted again
+  for (k in seq_len(retries)) {
+    miss <- which(out$review_reason %in% "no match")
+    if (!length(miss)) break
+    cli::cli_inform("Re-submitting {length(miss)} name{?s} returned without candidates (attempt {k} of {retries}).")
+    again <- .tnrs_candidates(species[miss], sources, batch_size, ...)
+    out[miss, ] <- .select_tnrs(again, species[miss], sources = sources)
+  }
+  out
+}
 
+
+# Internal: all TNRS candidates for `species`, in batches, with IDs indexing
+# `species`
+.tnrs_candidates <- function(species, sources, batch_size, ...) {
   batches <- split(seq_along(species), ceiling(seq_along(species) / batch_size))
   res <- purrr::map(batches, function(idx) {
     out <- TNRS::TNRS(species[idx], sources = sources, matches = "all", ...)
@@ -141,7 +160,7 @@ resolve_species <- function(species,
     out$ID <- idx[as.integer(out$ID)]
     out
   })
-  .select_tnrs(dplyr::bind_rows(res), species, sources = sources)
+  dplyr::bind_rows(res)
 }
 
 

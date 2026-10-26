@@ -28,9 +28,11 @@ when \code{method = "worldflora"}. If \code{NULL}, checks
 relevant for the WorldFlora backend.}
 
 \item{...}{Additional arguments passed to the backend. For TNRS:
-\code{sources} (default \code{c("wcvp", "wfo")}, in order of priority) and
-\code{batch_size} (default 5000), plus any argument of \code{\link[TNRS:TNRS]{TNRS::TNRS()}} except
-\code{matches}, which is always \code{"all"}.}
+\code{sources} (default \code{c("wcvp", "wfo")}, in order of priority),
+\code{batch_size} (default 5000) and \code{retries} (default 2: names returned
+without any candidate are submitted again up to this many times), plus
+any argument of \code{\link[TNRS:TNRS]{TNRS::TNRS()}} except \code{matches}, which is always
+\code{"all"}.}
 }
 \value{
 A tibble with one row per unique submitted name:
