@@ -2,7 +2,7 @@ Package: tidyTRY
 Title: Read, Clean, and Process Plant Trait Data from the TRY Database
 Version: 0.2.0
 Authors@R: person("Billur", "Bektas", role = c("aut", "cre"),
-                  email = "billur.bektas@example.com")
+                  email = "billur.bektas@gmail.com")
 Description: Provides a pipeline for processing plant trait data downloaded
     from the TRY database (<https://www.try-db.org/>). Handles reading large
     tab-delimited TRY data files with chunked processing, filtering by species
